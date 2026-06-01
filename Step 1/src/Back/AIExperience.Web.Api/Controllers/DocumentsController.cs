@@ -14,7 +14,8 @@ namespace AIExperience.Web.Api.Controllers;
 public class DocumentsController(
     ISender sender,
     IIngestionService ingestionService,
-    IDocumentRepository documentRepository) : ControllerBase
+    IDocumentRepository documentRepository,
+    IUnitOfWork unitOfWork) : ControllerBase
 {
     private const string DefaultUserId = "1ea95468-3f27-4a6d-8fb3-25fdd1530023";
 
@@ -72,6 +73,7 @@ public class DocumentsController(
             }
 
             await documentRepository.UpdateAsync(doc);
+            await unitOfWork.SaveChangesAsync();
             return CreatedAtAction(nameof(GetById), new { id = doc.Id }, ToResponse(doc));
         }
         finally
@@ -84,10 +86,8 @@ public class DocumentsController(
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var doc = await documentRepository.GetByIdAsync(id);
-        if (doc is null) return NotFound();
-        await documentRepository.DeleteAsync(id);
-        return NoContent();
+        var deleted = await sender.Send(new DeleteDocumentCommand { DocumentId = id });
+        return deleted ? NoContent() : NotFound();
     }
 
     private static DocumentResponse ToResponse(AIExperience.Rag.Domain.Entities.Document d) =>

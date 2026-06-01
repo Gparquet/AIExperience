@@ -7,7 +7,12 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const checkAllRef = useRef<HTMLInputElement>(null);
 
   async function loadDocuments() {
     setLoading(true);
@@ -22,6 +27,16 @@ export default function DocumentsPage() {
   }
 
   useEffect(() => { loadDocuments(); }, []);
+
+  useEffect(() => {
+    if (!checkAllRef.current) return;
+    checkAllRef.current.indeterminate = selected.size > 0 && selected.size < documents.length;
+  }, [selected.size, documents.length]);
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -39,13 +54,43 @@ export default function DocumentsPage() {
     }
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(`Supprimer « ${name} » ?`)) return;
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selected.size === documents.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(documents.map(d => d.id)));
+    }
+  }
+
+  async function handleDeleteSelected() {
+    const count = selected.size;
+    const ids = [...selected];
+    setDeleting(true);
+    setError(null);
     try {
-      await api.documents.delete(id);
-      setDocuments(prev => prev.filter(d => d.id !== id));
+      await Promise.all(ids.map(id => api.documents.delete(id)));
+      setDocuments(prev => prev.filter(d => !ids.includes(d.id)));
+      setSelected(new Set());
+      setConfirmOpen(false);
+      showToast(
+        count === 1
+          ? 'Document supprimé avec succès'
+          : `${count} documents supprimés avec succès`
+      );
     } catch (err) {
       setError((err as Error).message);
+      setConfirmOpen(false);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -66,18 +111,25 @@ export default function DocumentsPage() {
     <div className="page">
       <div className="page-header">
         <h1>Documents</h1>
-        <label className={`btn btn-primary ${uploading ? 'btn-disabled' : ''}`}>
-          {uploading && <span className="btn-spinner" />}
-          {uploading ? 'Importation…' : '+ Ajouter un PDF'}
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf"
-            hidden
-            onChange={handleUpload}
-            disabled={uploading}
-          />
-        </label>
+        <div className="page-header-actions">
+          {selected.size > 0 && (
+            <button className="btn btn-danger" onClick={() => setConfirmOpen(true)}>
+              Supprimer ({selected.size})
+            </button>
+          )}
+          <label className={`btn btn-primary ${uploading ? 'btn-disabled' : ''}`}>
+            {uploading && <span className="btn-spinner" />}
+            {uploading ? 'Importation…' : '+ Ajouter un PDF'}
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf"
+              hidden
+              onChange={handleUpload}
+              disabled={uploading}
+            />
+          </label>
+        </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
@@ -100,16 +152,34 @@ export default function DocumentsPage() {
         <table className="table">
           <thead>
             <tr>
+              <th className="col-check">
+                <input
+                  ref={checkAllRef}
+                  type="checkbox"
+                  checked={selected.size === documents.length && documents.length > 0}
+                  onChange={toggleAll}
+                />
+              </th>
               <th>Fichier</th>
               <th>Taille</th>
               <th>Statut</th>
               <th>Ajouté le</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
             {documents.map(doc => (
-              <tr key={doc.id}>
+              <tr
+                key={doc.id}
+                className={selected.has(doc.id) ? 'row-selected' : ''}
+                onClick={() => toggleSelect(doc.id)}
+              >
+                <td className="col-check" onClick={e => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(doc.id)}
+                    onChange={() => toggleSelect(doc.id)}
+                  />
+                </td>
                 <td className="filename">{doc.fileName}</td>
                 <td>{formatBytes(doc.fileSizeBytes)}</td>
                 <td>
@@ -118,19 +188,47 @@ export default function DocumentsPage() {
                   </span>
                 </td>
                 <td>{new Date(doc.createdAt).toLocaleDateString('fr-FR')}</td>
-                <td>
-                  <button
-                    className="btn btn-ghost btn-sm btn-delete"
-                    onClick={() => handleDelete(doc.id, doc.fileName)}
-                    title="Supprimer"
-                  >
-                    🗑
-                  </button>
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+
+      {confirmOpen && (
+        <div className="modal-overlay" onClick={() => !deleting && setConfirmOpen(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Confirmer la suppression</h2>
+            <p>
+              {selected.size === 1
+                ? 'Voulez-vous vraiment supprimer ce document ?'
+                : `Voulez-vous vraiment supprimer ces ${selected.size} documents ?`}
+            </p>
+            <p className="modal-warning">Cette action est irréversible.</p>
+            <div className="modal-actions">
+              <button
+                className="btn btn-ghost"
+                onClick={() => setConfirmOpen(false)}
+                disabled={deleting}
+              >
+                Annuler
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={handleDeleteSelected}
+                disabled={deleting}
+              >
+                {deleting && <span className="btn-spinner" />}
+                {deleting ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="toast toast-success">
+          ✓ {toast}
+        </div>
       )}
     </div>
   );
