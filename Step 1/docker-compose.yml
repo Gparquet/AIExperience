@@ -32,7 +32,7 @@ services:
   # #     interval: 10s
   # #     retries: 3
 
-  # # ── Applications ───────────────────────────────────────────────────────────
+  # ── Applications ───────────────────────────────────────────────────────────
 
   # api:
   #   build:
@@ -43,18 +43,12 @@ services:
   #     - "5000:8080"
   #   environment:
   #     - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=ragdocumentchat;Username=postgres;Password=postgres
-  #     - ConnectionStrings__Redis=
   #     - AI__Provider=Ollama
   #     - AI__Endpoint=http://host.docker.internal:11434
   #     - AI__ChatModel=llama3.2
   #     - AI__EmbeddingModel=nomic-embed-text
   #     - AI__EmbeddingDimensions=768
-  #     - Storage__UploadPath=/app/uploads
-  #     - OpenTelemetry__ServiceName=RagDocumentChat.Api
-  #     - OpenTelemetry__OtlpEndpoint=http://otel-collector:4317
-  #     - Cors__AllowedOrigins__0=http://localhost:5001
-  #   volumes:
-  #     - uploads:/app/uploads
+  #     - Cors__AllowedOrigins__0=http://localhost:5173
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
@@ -66,63 +60,14 @@ services:
   #     dockerfile: docker/Dockerfile.web
   #   container_name: rag-web
   #   ports:
-  #     - "5001:8080"
+  #     - "5173:8080"
   #   environment:
-  #     - ApiBaseUrl=http://api:8080
-  #     - DefaultUserId=demo-user
+  #     - VITE_API_URL=http://localhost:5000
   #   depends_on:
   #     - api
   #   restart: unless-stopped
 
-  # ingestion:
-  #   build:
-  #     context: .
-  #     dockerfile: docker/Dockerfile.ingestion
-  #   container_name: rag-ingestion
-  #   environment:
-  #     - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=ragdocumentchat;Username=postgres;Password=postgres
-  #     - ConnectionStrings__Redis=
-  #     - AI__Provider=Ollama
-  #     - AI__Endpoint=http://host.docker.internal:11434
-  #     - AI__ChatModel=llama3.2
-  #     - AI__EmbeddingModel=nomic-embed-text
-  #     - AI__EmbeddingDimensions=768
-  #     - Storage__UploadPath=/app/uploads
-  #     - OpenTelemetry__ServiceName=RagDocumentChat.Ingestion
-  #     - OpenTelemetry__OtlpEndpoint=http://otel-collector:4317
-  #   volumes:
-  #     - uploads:/app/uploads
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   restart: unless-stopped
-
-  # mcpserver:
-  #   build:
-  #     context: .
-  #     dockerfile: docker/Dockerfile.mcpserver
-  #   container_name: rag-mcpserver
-  #   ports:
-  #     - "5002:8080"
-  #   environment:
-  #     - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=ragdocumentchat;Username=postgres;Password=postgres
-  #     - ConnectionStrings__Redis=
-  #     - AI__Provider=Ollama
-  #     - AI__Endpoint=http://host.docker.internal:11434
-  #     - AI__ChatModel=llama3.2
-  #     - AI__EmbeddingModel=nomic-embed-text
-  #     - AI__EmbeddingDimensions=768
-  #     - Storage__UploadPath=/app/uploads
-  #     - OpenTelemetry__ServiceName=RagDocumentChat.McpServer
-  #     - OpenTelemetry__OtlpEndpoint=http://otel-collector:4317
-  #   volumes:
-  #     - uploads:/app/uploads
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   restart: unless-stopped
-
-  # # ── Observabilité ───────────────────────────────────────────────────────────
+  # ── Observabilité ───────────────────────────────────────────────────────────
 
   # otel-collector:
   #   image: otel/opentelemetry-collector-contrib:0.117.0
@@ -131,8 +76,8 @@ services:
   #   volumes:
   #     - ./k8s/infrastructure/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
   #   ports:
-  #     - "4317:4317"   # OTLP gRPC
-  #     - "4318:4318"   # OTLP HTTP
+  #     - "4317:4317"
+  #     - "4318:4318"
   #   depends_on:
   #     - jaeger
   #     - prometheus
@@ -141,7 +86,7 @@ services:
   #   image: jaegertracing/all-in-one:1.65
   #   container_name: rag-jaeger
   #   ports:
-  #     - "16686:16686"  # UI
+  #     - "16686:16686"
   #   environment:
   #     - COLLECTOR_OTLP_ENABLED=true
 
@@ -166,5 +111,4 @@ services:
 
 volumes:
   postgres_data:
-  # uploads:
   # grafana_data:

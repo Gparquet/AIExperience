@@ -23,7 +23,7 @@ public sealed class PgVectorStoreService : IVectorStoreService
         float[] vector,
         int topK = 20,
         Guid[]? documentIds = null,
-        double scoreThreshold = 0.75,
+        double scoreThreshold = 0.3,
         CancellationToken ct = default)
     {
         var vectorParam = new NpgsqlParameter("vector", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Real)

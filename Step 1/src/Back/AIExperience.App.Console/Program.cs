@@ -207,6 +207,8 @@ async Task AskQuestionAsync()
             foreach (var citation in response.Citations)
                 Console.WriteLine($"  • {citation.DocumentName} (page {citation.PageNumber}) : {citation.Excerpt}");
         }
+
+        Console.WriteLine($"\n[Stratégie: {response.StrategyUsed} | Tokens: {response.TotalTokens} | Durée: {response.DurationMs} ms]");
     }
     catch (Exception ex)
     {

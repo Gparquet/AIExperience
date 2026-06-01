@@ -1,5 +1,4 @@
-﻿using AIExperience.Rag.Domain.Enums;
-using AIExperience.Rag.Domain.Interfaces.Repositories;
+﻿using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using MediatR;
 
@@ -38,7 +37,7 @@ public sealed class UploadDocumentHandler(
         {
             DocumentId = document.Id,
             FileName = document.FileName,
-            Status = IngestionStatus.Completed, // TODO: mettre pending quand je metterais un background service pour traiter les documents 
+            Status = document.Status,
             CreatedAt = document.CreatedAt
         };
     }

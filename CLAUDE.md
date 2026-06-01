@@ -6,22 +6,28 @@ Contexte essentiel pour les assistants IA travaillant sur ce projet.
 
 ## Vue d'ensemble
 
-**Système RAG (Retrieval-Augmented Generation)** en C# .NET 10.
+**Système RAG (Retrieval-Augmented Generation)** en C# .NET 10 avec interface graphique React.
 Pipeline complet : ingestion de documents → chunking → embeddings → recherche vectorielle → réponse LLM avec citations.
 
 **Structure du dépôt :**
 ```
 AIExperience/
 └── Step 1/          ← Code source de l'étape 1 (étape actuelle)
-    ├── AIExperience.slnx
     ├── ARCHITECTURE.md
     ├── docker-compose.yml
     ├── scripts/init.sql
     └── src/
-        ├── AIExperience.Rag.Domain/
-        ├── AIExperience.Rag.Application/
-        ├── AIExperience.Rag.Infrastructure/
-        └── AIExperience.App.Console/
+        ├── Back/                          ← Projets C# / .NET
+        │   ├── AIExperience.slnx
+        │   ├── AIExperience.Rag.Domain/
+        │   ├── AIExperience.Rag.Application/
+        │   ├── AIExperience.Rag.Infrastructure/
+        │   ├── AIExperience.App.Console/
+        │   └── AIExperience.Web.Api/      ← API REST ASP.NET Core
+        └── Front/                         ← Application React + TypeScript (Vite)
+            ├── src/api/client.ts
+            ├── src/pages/
+            └── src/types/index.ts
 ```
 
 Le projet est organisé en **Steps** (étapes d'apprentissage/développement progressif). Le dossier `Step 1/` contient l'implémentation courante.
@@ -35,14 +41,26 @@ Le projet est organisé en **Steps** (étapes d'apprentissage/développement pro
 cd "Step 1"
 docker-compose up -d
 
-# Compiler la solution
-dotnet build "Step 1/AIExperience.slnx"
+# Compiler la solution .NET
+dotnet build "Step 1/src/Back/AIExperience.slnx"
 
-# Lancer l'application console
-dotnet run --project "Step 1/src/AIExperience.App.Console"
+# Lancer l'API Web (back-end)
+dotnet run --project "Step 1/src/Back/AIExperience.Web.Api"
+# → http://localhost:50406  (API REST — HTTP)
+# → https://localhost:50405 (API REST — HTTPS)
+# → http://localhost:50406/scalar/v1  (documentation interactive)
+
+# Lancer l'application console (alternative sans front)
+dotnet run --project "Step 1/src/Back/AIExperience.App.Console"
+
+# Lancer le front-end React
+cd "Step 1/src/Front"
+npm install
+npm run dev
+# → http://localhost:5173
 
 # Appliquer les migrations EF Core (si ajoutées)
-dotnet ef database update --project "Step 1/src/AIExperience.Rag.Infrastructure" --startup-project "Step 1/src/AIExperience.App.Console"
+dotnet ef database update --project "Step 1/src/Back/AIExperience.Rag.Infrastructure" --startup-project "Step 1/src/Back/AIExperience.Web.Api"
 ```
 
 ---
@@ -50,7 +68,7 @@ dotnet ef database update --project "Step 1/src/AIExperience.Rag.Infrastructure"
 ## Architecture — Clean Architecture en 4 couches
 
 ```
-Domain  ←  Application  ←  Infrastructure  ←  Console
+Domain  ←  Application  ←  Infrastructure  ←  Web.Api / Console
 ```
 
 | Couche | Projet | Peut référencer |
@@ -58,6 +76,7 @@ Domain  ←  Application  ←  Infrastructure  ←  Console
 | Domain | `AIExperience.Rag.Domain` | Rien (zéro dépendance externe) |
 | Application | `AIExperience.Rag.Application` | Domain uniquement |
 | Infrastructure | `AIExperience.Rag.Infrastructure` | Domain + Application |
+| Web.Api | `AIExperience.Web.Api` | Toutes les couches (racine de composition DI) |
 | Console | `AIExperience.App.Console` | Toutes les couches (racine de composition DI) |
 
 **Règle absolue :** une couche interne ne connaît JAMAIS une couche externe.
@@ -66,9 +85,13 @@ Domain  ←  Application  ←  Infrastructure  ←  Console
 
 ## Stack technique
 
+### Back-end (.NET)
+
 | Technologie | Usage |
 |------------|-------|
 | .NET 10.0 | Framework cible de tous les projets |
+| ASP.NET Core 10 | API REST (`AIExperience.Web.Api`) |
+| Microsoft.AspNetCore.OpenApi + Scalar | Documentation API interactive |
 | Entity Framework Core 10 + Npgsql 10 | ORM PostgreSQL |
 | pgvector 0.3.0 | Recherche vectorielle cosinus dans PostgreSQL |
 | MediatR 14.1.0 | CQRS (commandes uniquement, pas les requêtes) |
@@ -77,6 +100,15 @@ Domain  ←  Application  ←  Infrastructure  ←  Console
 | Microsoft.SemanticKernel 1.74.0 | Templates de prompts, appels structurés LLM |
 | OllamaSharp 5.4.25 | Support modèles locaux Ollama |
 | PdfPig 0.1.15 | Extraction texte PDF |
+
+### Front-end (React)
+
+| Technologie | Usage |
+|------------|-------|
+| React 19 + TypeScript | Framework UI |
+| Vite | Build tool + dev server (port 5173) |
+| React Router v7 | Navigation entre pages |
+| Fetch API (natif) | Appels HTTP vers l'API REST |
 
 ---
 
@@ -106,6 +138,11 @@ var doc = new Document { FileName = "...", ... };
 ### Injection de dépendances
 - Registration dans les méthodes d'extension : `AddInfrastructure()` et `AddApplication()`
 - Jamais de `new` pour les services dans le code métier
+
+### API REST
+- Controllers dans `AIExperience.Web.Api/Controllers/`
+- DTOs dans `AIExperience.Web.Api/DTOs/` (records C#)
+- Pas de logique métier dans les controllers — déléguer aux services du Domain/Application
 
 ---
 
@@ -157,6 +194,9 @@ UploadDocumentCommand (MediatR)
   "RagOptions": {
     "DefaultStrategy": "Adaptive",
     "Retrieval": { "TopK": 10, "ScoreThreshold": 0.3 }
+  },
+  "Cors": {
+    "AllowedOrigins": [ "http://localhost:5173" ]
   }
 }
 ```
@@ -188,6 +228,8 @@ Providers supportés : `AzureOpenAI` | `OpenAI` | `Ollama` | `GitHubModels`
 | Cache Redis | `RagOptions.Cache` | Config existe, code absent |
 | Background processing | `Program.cs` | Status forcé Completed manuellement |
 | Outbox pattern | Table SQL créée | Non intégré en app |
+| Dockerfiles | `docker/` | Commentés dans docker-compose, non créés |
+| Authentification utilisateur | API + Front | UserId hardcodé en dev |
 
 ---
 
@@ -195,13 +237,17 @@ Providers supportés : `AzureOpenAI` | `OpenAI` | `Ollama` | `GitHubModels`
 
 | Fichier | Rôle |
 |---------|------|
-| `Step 1/src/AIExperience.App.Console/Program.cs` | Racine DI + menu interactif |
-| `Step 1/src/AIExperience.App.Console/appsettings.json` | Configuration runtime |
-| `Step 1/src/AIExperience.Rag.Infrastructure/DependencyInjection.cs` | Registration de tous les services Infrastructure |
-| `Step 1/src/AIExperience.Rag.Application/DependencyInjection.cs` | Registration de tous les services Application |
-| `Step 1/src/AIExperience.Rag.Infrastructure/AI/Rag/RagPipelineService.cs` | Cœur du pipeline RAG |
-| `Step 1/src/AIExperience.Rag.Infrastructure/Persistence/AppDbContext.cs` | DbContext EF Core |
-| `Step 1/src/AIExperience.Rag.Infrastructure/Options/AiProviderOptions.cs` | Config provider IA |
-| `Step 1/src/AIExperience.Rag.Infrastructure/Options/RagOptions.cs` | Tuning du RAG |
+| `Step 1/src/Back/AIExperience.Web.Api/Program.cs` | Racine DI de l'API Web + CORS + OpenAPI |
+| `Step 1/src/Back/AIExperience.Web.Api/appsettings.json` | Configuration runtime de l'API |
+| `Step 1/src/Back/AIExperience.Web.Api/Controllers/DocumentsController.cs` | Endpoints documents |
+| `Step 1/src/Back/AIExperience.Web.Api/Controllers/ChatController.cs` | Endpoint question RAG |
+| `Step 1/src/Back/AIExperience.App.Console/Program.cs` | Racine DI + menu interactif (console) |
+| `Step 1/src/Back/AIExperience.Rag.Infrastructure/DependencyInjection.cs` | Registration de tous les services Infrastructure |
+| `Step 1/src/Back/AIExperience.Rag.Application/DependencyInjection.cs` | Registration de tous les services Application |
+| `Step 1/src/Back/AIExperience.Rag.Infrastructure/AI/Rag/RagPipelineService.cs` | Cœur du pipeline RAG |
+| `Step 1/src/Back/AIExperience.Rag.Infrastructure/Persistence/AppDbContext.cs` | DbContext EF Core |
+| `Step 1/src/Front/src/api/client.ts` | Client HTTP du front-end |
+| `Step 1/src/Front/src/pages/DocumentsPage.tsx` | Page gestion des documents |
+| `Step 1/src/Front/src/pages/ChatPage.tsx` | Page interface chat RAG |
 | `Step 1/scripts/init.sql` | Schéma PostgreSQL complet |
 | `Step 1/ARCHITECTURE.md` | Documentation architecture détaillée (FR) |

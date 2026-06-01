@@ -9,6 +9,7 @@ using AIExperience.Rag.Infrastructure.Options;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel.ChatCompletion;
+using System.Diagnostics;
 using System.Text;
 
 namespace AIExperience.Rag.Infrastructure.AI.Rag
@@ -24,6 +25,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
     {
         public async Task<RagResponse> AskAsync(RagQuery query, CancellationToken ct = default)
         {
+            var sw = Stopwatch.StartNew();
             var ragOptions = options.Value;
 
             // 1. Résolution de la stratégie
@@ -34,18 +36,18 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             // 2. Récupération des chunks selon la stratégie
             var rankedChunks = await RetrieveChunksAsync(query, strategy, ragOptions, ct);
 
-            // 3. Compression du contexte. Permet de réduire le nombre de tokens envoyés au LLM tout en conservant l'essentiel de l'information.
-            IReadOnlyList<DocumentChunk> contextChunks = null;
+            // 3. Compression du contexte — réduit les tokens envoyés au LLM en conservant les phrases pertinentes.
+            //    Fallback sur les chunks bruts si la compression est désactivée ou retourne vide.
+            IReadOnlyList<DocumentChunk> contextChunks;
             if (ragOptions.ContextCompression.Enabled && rankedChunks.Count > 0)
             {
-                contextChunks = await contextCompressorService.CompressAsync(query.Question, rankedChunks.Select(r => r.Chunk), ct);
+                var compressed = await contextCompressorService.CompressAsync(query.Question, rankedChunks.Select(r => r.Chunk), ct);
+                contextChunks = compressed.Count > 0 ? compressed : rankedChunks.Select(r => r.Chunk).ToList();
             }
-            
-            if(contextChunks?.Count == 0 || !ragOptions.ContextCompression.Enabled && rankedChunks.Count == 0)
+            else
             {
                 contextChunks = rankedChunks.Select(r => r.Chunk).ToList();
             }
-               
 
             // 4. Construction du prompt et appel au LLM
             var chatHistory = await BuildChatHistoryAsync(query, contextChunks, ct);
@@ -53,6 +55,8 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 chatHistory.Select(m => new Microsoft.Extensions.AI.ChatMessage(m.Role == AuthorRole.User ? ChatRole.User : ChatRole.Assistant, m.Content)).ToList(),
                 new ChatOptions { MaxOutputTokens = 2000, Temperature = 0.1f },
                 ct);
+
+            sw.Stop();
 
             // 5. Construction des citations
             var citations = rankedChunks.Select(r => Citation.Create(
@@ -66,7 +70,8 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 Answer = string.Join("\n", completionResult.Messages.Select(c => c.Text)) ?? string.Empty,
                 Citations = citations,
                 StrategyUsed = strategy,
-                TotalTokens = (int)(completionResult.Usage?.TotalTokenCount ?? 0)
+                TotalTokens = (int)(completionResult.Usage?.TotalTokenCount ?? 0),
+                DurationMs = sw.ElapsedMilliseconds
             };
         }
 

@@ -1,8 +1,0 @@
-﻿<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/AIExperience.App.Console/AIExperience.App.Console.csproj" />
-    <Project Path="src/AIExperience.Rag.Application/AIExperience.Rag.Application.csproj" />
-    <Project Path="src/AIExperience.Rag.Domain/AIExperience.Rag.Domain.csproj" />
-    <Project Path="src/AIExperience.Rag.Infrastructure/AIExperience.Rag.Infrastructure.csproj" />
-  </Folder>
-</Solution>

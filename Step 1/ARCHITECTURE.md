@@ -1,17 +1,43 @@
-﻿# Architecture — AIExperience.Rag
+# Architecture — AIExperience.Rag
 
 Ce document décrit l'architecture technique du projet **AIExperience.Rag**.  
 Il est destiné aux développeurs, aux assistants IA (GitHub Copilot, Claude, Gemini, etc.) et à tout contributeur ayant besoin de comprendre le système avant d'effectuer des modifications.
 
 ---
 
+## Structure des dossiers
+
+```
+Step 1/
+├── docker-compose.yml
+├── scripts/init.sql
+└── src/
+    ├── Back/                          ← Tous les projets C# / .NET
+    │   ├── AIExperience.slnx
+    │   ├── AIExperience.Rag.Domain/
+    │   ├── AIExperience.Rag.Application/
+    │   ├── AIExperience.Rag.Infrastructure/
+    │   ├── AIExperience.App.Console/
+    │   └── AIExperience.Web.Api/
+    └── Front/                         ← Application React + TypeScript (Vite)
+        ├── src/
+        │   ├── api/client.ts          ← Client HTTP vers l'API REST
+        │   ├── pages/                 ← DocumentsPage, ChatPage
+        │   ├── components/            ← Composants réutilisables
+        │   └── types/index.ts         ← Types TypeScript partagés
+        ├── vite.config.ts
+        └── package.json
+```
+
+---
+
 ## Couches de la Clean Architecture
 
-La solution est organisée en quatre couches avec une **règle de dépendance vers l'intérieur** stricte.  
+La solution .NET est organisée en quatre couches avec une **règle de dépendance vers l'intérieur** stricte.  
 Une couche interne ne connaît jamais une couche externe.
 
 ```
-Domain  ←  Application  ←  Infrastructure  ←  Console
+Domain  ←  Application  ←  Infrastructure  ←  Web.Api / Console
 ```
 
 ### Responsabilités des couches
@@ -21,7 +47,61 @@ Domain  ←  Application  ←  Infrastructure  ←  Console
 | **Domain** | `AIExperience.Rag.Domain` | Entités, interfaces, enums, value objects. Zéro dépendance externe. | Rien |
 | **Application** | `AIExperience.Rag.Application` | Cas d'usage (MediatR), extraction de texte, chunking, normalisation, validation. | Domain uniquement |
 | **Infrastructure** | `AIExperience.Rag.Infrastructure` | OpenAI, pgvector, EF Core, Semantic Kernel, implémentations du pipeline RAG. | Domain + Application |
+| **Web.Api** | `AIExperience.Web.Api` | Racine de composition DI, controllers REST, CORS, OpenAPI (Scalar). | Toutes les couches |
 | **Console** | `AIExperience.App.Console` | Racine de composition DI, menu console interactif. | Toutes les couches |
+
+---
+
+## API REST (`AIExperience.Web.Api`)
+
+### Endpoints
+
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| `GET`    | `/api/documents`       | Liste tous les documents de l'utilisateur |
+| `POST`   | `/api/documents`       | Upload + ingestion d'un PDF (multipart/form-data) |
+| `GET`    | `/api/documents/{id}`  | Récupère un document par son id |
+| `DELETE` | `/api/documents/{id}`  | Supprime un document et ses chunks |
+| `POST`   | `/api/chat/ask`        | Pose une question RAG sur les documents sélectionnés |
+
+### Documentation interactive
+
+En environnement de développement, l'API expose :
+- OpenAPI schema : `http://localhost:5000/openapi/v1.json`
+- Scalar UI : `http://localhost:5000/scalar/v1`
+
+### CORS
+
+Configuré dans `appsettings.json → Cors.AllowedOrigins`.  
+Par défaut : `http://localhost:5173` (Vite dev server).
+
+---
+
+## Frontend React (`src/Front/`)
+
+Application **React 19 + TypeScript** compilée avec **Vite**.
+
+### Pages
+
+| Page | Route | Description |
+|------|-------|-------------|
+| `DocumentsPage` | `/` | Liste, upload et suppression de PDFs |
+| `ChatPage` | `/chat` | Interface de chat RAG avec sélection de documents et affichage des citations |
+
+### Client API (`src/api/client.ts`)
+
+Toutes les requêtes passent par `api.documents.*` et `api.chat.*`.  
+L'URL de base est configurable via `VITE_API_URL` (défaut : `http://localhost:5000`).
+
+Le proxy Vite (`vite.config.ts`) redirige `/api/*` vers `http://localhost:5000` en développement.
+
+### Lancer le frontend
+
+```powershell
+cd "Step 1/src/Front"
+npm install
+npm run dev   # http://localhost:5173
+```
 
 ---
 
@@ -158,11 +238,6 @@ Un behavior de pipeline `ValidationBehavior<TRequest, TResponse>` exécute **Flu
 | `AppDbContext` | DbContext EF Core 10 avec colonnes pgvector |
 | `DocumentRepository` | Implémentation EF Core de `IDocumentRepository` |
 | `ConversationRepository` | Implémentation EF Core de `IConversationRepository` |
-| `DocumentConfiguration` | Mapping Fluent API pour `Document` |
-| `DocumentChunkConfiguration` | Mapping Fluent API pour `DocumentChunk` (colonne vectorielle) |
-| `CitationConfiguration` | Mapping Fluent API pour `Citation` |
-| `ConversationSessionConfiguration` | Mapping Fluent API pour `ConversationSession` |
-| `ChatMessageConfiguration` | Mapping Fluent API pour `ChatMessage` |
 
 ### Configuration (`Options/`)
 
@@ -170,33 +245,6 @@ Un behavior de pipeline `ValidationBehavior<TRequest, TResponse>` exécute **Flu
 |--------|-------------|
 | `AiProviderOptions` | `appsettings.json` → section `"AI"` |
 | `RagOptions` | `appsettings.json` → section `"RagOptions"` |
-
-Sous-options de `RagOptions` :
-
-| Sous-option | Rôle |
-|------------|------|
-| `HydeOptions` | Activation HyDE + longueur du document hypothétique |
-| `MultiQueryOptions` | Nombre de variantes de requête pour Fusion |
-| `RetrievalOptions` | Top-K chunks, seuil de similarité |
-| `RerankerOptions` | Paramètres du reranker cross-encoder |
-| `ContextCompressionOptions` | Activation/désactivation de la compression de contexte |
-| `CacheOptions` | Cache Redis des réponses |
-
----
-
-## Hôte Console (`AIExperience.App.Console`)
-
-`Program.cs` est la **racine de composition** :
-
-1. Crée l'`IHost` via `Host.CreateApplicationBuilder`.
-2. Appelle `services.AddInfrastructure(config).AddApplication()`.
-3. Résout les services depuis le conteneur DI et exécute une boucle interactive.
-
-Options du menu interactif :
-- **1** — Ingérer des documents (appelle `UploadDocumentCommand` via MediatR)
-- **2** — Poser une question (appelle `IRagPipelineService.AskAsync`)
-- **3** — Charger des documents déjà ingérés
-- **0** — Quitter
 
 ---
 
@@ -210,49 +258,4 @@ Options du menu interactif :
 | MediatR CQRS uniquement pour les commandes | Les requêtes sont des appels directs ; la surcharge MediatR n'est pas justifiée pour les lectures. |
 | Pattern Options pour toute la configuration | Fortement typé, validé au démarrage, facilement testable. |
 | `IUnitOfWork` encapsule `SaveChangesAsync` | Évite les appels `SaveChanges` dispersés dans les repositories. |
-
----
-
-## Diagramme de flux de données
-
-```
-Utilisateur
- │  uploade un fichier
- ▼
-UploadDocumentCommand (MediatR)
- │
- ▼
-UploadDocumentHandler
- │
- ├─► ICompositeTextExtractor  →  texte brut
- │
- ├─► ITextNomalize            →  texte nettoyé
- │
- ├─► ITextChunker             →  List<TextChunk>
- │
- ├─► IEmbeddingService        →  float[] par chunk
- │
- ├─► IDocumentRepository      →  persistance Document + DocumentChunks
- │
- └─► IUnitOfWork.CommitAsync  →  commit de la transaction
-
-
-Utilisateur
- │  pose une question
- ▼
-IRagPipelineService.AskAsync
- │
- ├─► IAdaptiveQueryRouter      →  RagStrategy
- │
- ├─► IEmbeddingService         →  embedding de la question
- │
- ├─► IVectorStoreService       →  List<(DocumentChunk, score)>
- │
- ├─► IContextCompressorService →  chunks compressés
- │
- ├─► IConversationRepository   →  historique de chat
- │
- ├─► IChatClient               →  réponse du LLM
- │
- └─► Citation.Create(...)      →  RagResponse
-```
+| Proxy Vite en développement | Évite les problèmes CORS en dev sans changer la config du serveur. |
