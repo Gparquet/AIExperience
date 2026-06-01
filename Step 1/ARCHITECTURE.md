@@ -62,7 +62,22 @@ Domain  ←  Application  ←  Infrastructure  ←  Web.Api / Console
 | `POST`   | `/api/documents`       | Upload + ingestion d'un PDF (multipart/form-data) |
 | `GET`    | `/api/documents/{id}`  | Récupère un document par son id |
 | `DELETE` | `/api/documents/{id}`  | Supprime un document et ses chunks |
-| `POST`   | `/api/chat/ask`        | Pose une question RAG sur les documents sélectionnés |
+| `POST`   | `/api/chat/ask`        | Pose une question RAG — réponse complète en une fois |
+| `POST`   | `/api/chat/stream`     | Pose une question RAG — réponse en streaming SSE (token par token) |
+
+#### Format SSE de `/api/chat/stream`
+
+La réponse est un flux `text/event-stream`. Deux types d'événements :
+
+```
+event: token
+data: {"token":"Bonjour"}
+
+event: done
+data: {"answer":"...","citations":[...],"strategyUsed":"Direct","totalTokens":0,"durationMs":1234}
+```
+
+Le client accumule les `token` pour afficher le texte progressivement, puis enrichit le message final avec les citations et métriques reçus dans `done`.
 
 ### Documentation interactive
 
@@ -86,7 +101,7 @@ Application **React 19 + TypeScript** compilée avec **Vite**.
 | Page | Route | Description |
 |------|-------|-------------|
 | `DocumentsPage` | `/` | Liste, upload et suppression de PDFs |
-| `ChatPage` | `/chat` | Interface de chat RAG avec sélection de documents et affichage des citations |
+| `ChatPage` | `/chat` | Interface de chat RAG avec affichage en streaming token par token |
 
 ### Client API (`src/api/client.ts`)
 
@@ -94,6 +109,20 @@ Toutes les requêtes passent par `api.documents.*` et `api.chat.*`.
 L'URL de base est configurable via `VITE_API_URL` (défaut : `http://localhost:5000`).
 
 Le proxy Vite (`vite.config.ts`) redirige `/api/*` vers `http://localhost:5000` en développement.
+
+#### Streaming SSE dans le front-end
+
+`api.chat.askStream()` est un **générateur async** (`async function*`) qui lit le `ReadableStream` de la réponse `fetch`, parse les blocs SSE (séparés par `\n\n`) et `yield` chaque événement typé (`StreamEvent`).
+
+Dans `ChatPage`, chaque token est rendu immédiatement grâce à `flushSync` de React DOM — sans ça, React 18 batcherait tous les `setState` rapides et le texte n'apparaîtrait qu'à la fin.
+
+```
+fetch /api/chat/stream
+  └─ ReadableStream.getReader()
+      └─ buffer SSE → parse → yield StreamEvent
+          ├─ event: token → flushSync(setStreamingContent)   ← rendu immédiat
+          └─ event: done  → setMessages (avec citations)     ← message final
+```
 
 ### Lancer le frontend
 
@@ -117,6 +146,14 @@ npm run dev   # http://localhost:5173
 | `ConversationSession` | Session de chat multi-tour liée à un utilisateur. |
 | `ChatMessage` | Message unique dans une conversation (rôle + contenu + horodatage). |
 
+**Modèles de transfert (non-entités) :**
+
+| Modèle | Description |
+|--------|-------------|
+| `RagQuery` | Requête entrante vers le pipeline RAG (question, stratégie, filtres). |
+| `RagResponse` | Réponse complète du pipeline (réponse texte, citations, métriques). |
+| `RagStreamChunk` | Unité de streaming : soit un `Token` (string), soit `IsDone = true` avec le `FinalResponse`. |
+
 Toutes les entités utilisent des **setters privés** et des **méthodes factory statiques** (`Entity.Create(...)`).
 
 ### Interfaces
@@ -124,7 +161,7 @@ Toutes les entités utilisent des **setters privés** et des **méthodes factory
 **Services :**
 
 ```
-IRagPipelineService       — Orchestre le pipeline RAG complet (AskAsync)
+IRagPipelineService       — Orchestre le pipeline RAG complet (AskAsync + AskStreamAsync)
 IIngestionService         — Ingère un document : extraction → chunking → embedding → persistance
 IEmbeddingService         — Génère des embeddings float[] à partir d'un texte
 IVectorStoreService       — Recherche sémantique dans pgvector
@@ -191,7 +228,9 @@ Un behavior de pipeline `ValidationBehavior<TRequest, TResponse>` exécute **Flu
 | `ContextCompressorService` | Utilise SK pour compresser les chunks récupérés avant de construire le prompt LLM |
 | `RagPrompts` | Templates de prompts statiques utilisés par les fonctions SK |
 
-#### Étapes du pipeline RAG (dans `RagPipelineService.AskAsync`)
+#### Étapes du pipeline RAG
+
+Les étapes 1 à 4 sont **identiques** pour `AskAsync` et `AskStreamAsync`. Seule l'étape 5 diffère.
 
 ```
 1. Résolution de stratégie
@@ -210,13 +249,19 @@ Un behavior de pipeline `ValidationBehavior<TRequest, TResponse>` exécute **Flu
    └─ Charge l'historique de conversation depuis IConversationRepository
    └─ Construit le ChatHistory SK : prompt système + messages précédents + contexte compressé
 
-5. Complétion LLM
-   └─ IChatClient.GetResponseAsync (abstraction Microsoft.Extensions.AI)
+5a. Complétion LLM — mode bloquant (AskAsync)
+    └─ IChatClient.GetResponseAsync → attend la réponse complète
+
+5b. Complétion LLM — mode streaming (AskStreamAsync)
+    └─ IChatClient.GetStreamingResponseAsync → IAsyncEnumerable<ChatResponseUpdate>
+    └─ Chaque token est yield return new RagStreamChunk { Token = token }
+    └─ À la fin : yield return RagStreamChunk { IsDone = true, FinalResponse = ... }
 
 6. Construction des citations
    └─ Associe chaque chunk classé → Citation.Create(...)
 
 7. Retourne RagResponse { Answer, Citations, StrategyUsed, TotalTokens }
+   (ou stream de RagStreamChunk pour AskStreamAsync)
 ```
 
 ### Clients IA (`AI/Embedding/`)
@@ -259,3 +304,7 @@ Un behavior de pipeline `ValidationBehavior<TRequest, TResponse>` exécute **Flu
 | Pattern Options pour toute la configuration | Fortement typé, validé au démarrage, facilement testable. |
 | `IUnitOfWork` encapsule `SaveChangesAsync` | Évite les appels `SaveChanges` dispersés dans les repositories. |
 | Proxy Vite en développement | Évite les problèmes CORS en dev sans changer la config du serveur. |
+| SSE (POST) pour le streaming de la réponse LLM | Unidirectionnel, léger, natif HTTP — voir [ADR-001](docs/adr/001-streaming-rag-reponse.md). |
+| `IAsyncEnumerable` dans `IRagPipelineService` | Le pipeline entier reste testable et découplé du transport HTTP. |
+| `flushSync` React côté client | React 18 batche les `setState` rapides ; `flushSync` force un rendu par token. |
+| `IHttpResponseBodyFeature.DisableBuffering()` | Désactive le buffering ASP.NET Core pour que chaque token soit envoyé immédiatement. |
