@@ -1,4 +1,4 @@
-import type { AskQuestionRequest, AskQuestionResponse, DocumentResponse } from '../types';
+import type { AskQuestionRequest, AskQuestionResponse, DocumentResponse, StreamEvent } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -32,5 +32,45 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       }),
+
+    async *askStream(payload: AskQuestionRequest): AsyncGenerator<StreamEvent> {
+      const res = await fetch(`${BASE_URL}/api/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok || !res.body) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() ?? '';
+
+          for (const block of parts) {
+            let eventName = 'message';
+            let data = '';
+            for (const line of block.split('\n')) {
+              if (line.startsWith('event: ')) eventName = line.slice(7);
+              else if (line.startsWith('data: ')) data = line.slice(6);
+            }
+            if (data) yield { event: eventName, data: JSON.parse(data) } as StreamEvent;
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    },
   },
 };

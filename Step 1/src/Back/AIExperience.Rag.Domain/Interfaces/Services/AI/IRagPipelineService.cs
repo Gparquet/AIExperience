@@ -1,4 +1,5 @@
 ﻿using AIExperience.Rag.Domain.Models;
+using System.Collections.Generic;
 
 namespace AIExperience.Rag.Domain.Interfaces.Services.AI
 {
@@ -16,5 +17,7 @@ namespace AIExperience.Rag.Domain.Interfaces.Services.AI
         /// <param name="ct">Jeton d'annulation.</param>
         /// <returns>Réponse générée avec citations et métriques d'exécution.</returns>
         Task<RagResponse> AskAsync(RagQuery query, CancellationToken ct = default);
+
+        IAsyncEnumerable<RagStreamChunk> AskStreamAsync(RagQuery query, CancellationToken ct = default);
     }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { api } from '../api/client';
-import type { AskQuestionResponse, CitationResponse } from '../types';
+import type { CitationResponse } from '../types';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -13,12 +14,14 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const streamingRef = useRef('');
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingContent]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,21 +31,35 @@ export default function ChatPage() {
     setMessages(prev => [...prev, { role: 'user', content: q }]);
     setQuestion('');
     setLoading(true);
+    setStreamingContent('');
+    streamingRef.current = '';
     setError(null);
 
     try {
-      const res: AskQuestionResponse = await api.chat.ask({
-        question: q,
-        documentIds: [],
-      });
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: res.answer,
-        meta: { strategy: res.strategyUsed, tokens: res.totalTokens, duration: res.durationMs },
-        citations: res.citations,
-      }]);
+      for await (const event of api.chat.askStream({ question: q, documentIds: [] })) {
+        if (event.event === 'token') {
+          streamingRef.current += event.data.token;
+          flushSync(() => {
+            setStreamingContent(streamingRef.current);
+          });
+        } else if (event.event === 'done') {
+          const res = event.data;
+          setStreamingContent('');
+          streamingRef.current = '';
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: res.answer,
+            meta: { strategy: res.strategyUsed, tokens: res.totalTokens, duration: res.durationMs },
+            citations: res.citations,
+          }]);
+        } else if (event.event === 'error') {
+          throw new Error(event.data.message);
+        }
+      }
     } catch (err) {
       setError((err as Error).message);
+      setStreamingContent('');
+      streamingRef.current = '';
       setMessages(prev => prev.slice(0, -1));
     } finally {
       setLoading(false);
@@ -87,8 +104,11 @@ export default function ChatPage() {
         ))}
         {loading && (
           <div className="message message-assistant">
-            <div className="message-bubble typing">
-              <span /><span /><span />
+            <div className="message-bubble">
+              {streamingContent
+                ? <p>{streamingContent}</p>
+                : <div className="typing"><span /><span /><span /></div>
+              }
             </div>
           </div>
         )}

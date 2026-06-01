@@ -27,3 +27,8 @@ export interface AskQuestionResponse {
   totalTokens: number;
   durationMs: number;
 }
+
+export type StreamEvent =
+  | { event: 'token'; data: { token: string } }
+  | { event: 'done'; data: AskQuestionResponse }
+  | { event: 'error'; data: { message: string } };

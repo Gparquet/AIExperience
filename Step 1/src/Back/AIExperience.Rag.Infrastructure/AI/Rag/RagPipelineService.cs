@@ -10,6 +10,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel.ChatCompletion;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace AIExperience.Rag.Infrastructure.AI.Rag
@@ -72,6 +73,78 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 StrategyUsed = strategy,
                 TotalTokens = (int)(completionResult.Usage?.TotalTokenCount ?? 0),
                 DurationMs = sw.ElapsedMilliseconds
+            };
+        }
+
+        public async IAsyncEnumerable<RagStreamChunk> AskStreamAsync(
+            RagQuery query,
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            var sw = Stopwatch.StartNew();
+            var ragOptions = options.Value;
+
+            // 1. Résolution de la stratégie
+            var strategy = query.Strategy == RagStrategy.Adaptive
+                ? await adaptiveQueryRouter.GetRagStrategyAsync(query.Question, ct)
+                : query.Strategy;
+
+            // 2. Récupération des chunks
+            var rankedChunks = await RetrieveChunksAsync(query, strategy, ragOptions, ct);
+
+            // 3. Compression du contexte
+            IReadOnlyList<DocumentChunk> contextChunks;
+            if (ragOptions.ContextCompression.Enabled && rankedChunks.Count > 0)
+            {
+                var compressed = await contextCompressorService.CompressAsync(query.Question, rankedChunks.Select(r => r.Chunk), ct);
+                contextChunks = compressed.Count > 0 ? compressed : rankedChunks.Select(r => r.Chunk).ToList();
+            }
+            else
+            {
+                contextChunks = rankedChunks.Select(r => r.Chunk).ToList();
+            }
+
+            // 4. Construction du prompt
+            var chatHistory = await BuildChatHistoryAsync(query, contextChunks, ct);
+            var messages = chatHistory
+                .Select(m => new Microsoft.Extensions.AI.ChatMessage(
+                    m.Role == AuthorRole.User ? ChatRole.User : ChatRole.Assistant, m.Content))
+                .ToList();
+
+            // 5. Streaming LLM
+            var totalText = new StringBuilder();
+            await foreach (var update in chatClient.GetStreamingResponseAsync(
+                messages,
+                new ChatOptions { MaxOutputTokens = 2000, Temperature = 0.1f },
+                ct))
+            {
+                var token = update.Text;
+                if (!string.IsNullOrEmpty(token))
+                {
+                    totalText.Append(token);
+                    yield return new RagStreamChunk { Token = token };
+                }
+            }
+
+            sw.Stop();
+
+            // 6. Citations + réponse finale
+            var citations = rankedChunks.Select(r => Citation.Create(
+                Guid.Empty, r.Chunk.DocumentId,
+                $"Document {r.Chunk.DocumentId}",
+                r.Chunk.Content[..Math.Min(200, r.Chunk.Content.Length)],
+                r.Score, r.Chunk.PageNumber)).ToList();
+
+            yield return new RagStreamChunk
+            {
+                IsDone = true,
+                FinalResponse = new RagResponse
+                {
+                    Answer = totalText.ToString(),
+                    Citations = citations,
+                    StrategyUsed = strategy,
+                    TotalTokens = 0,
+                    DurationMs = sw.ElapsedMilliseconds
+                }
             };
         }
 
