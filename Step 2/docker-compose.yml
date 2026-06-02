@@ -1,0 +1,114 @@
+name: ragdocumentchat
+
+services:
+
+  # ── Infrastructure ─────────────────────────────────────────────────────────
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: rag-postgres
+    environment:
+      POSTGRES_DB: ragdocumentchat
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # # Redis optionnel — commenter pour utiliser le cache mémoire en local
+  # # redis:
+  # #   image: redis:7-alpine
+  # #   container_name: rag-redis
+  # #   ports:
+  # #     - "6379:6379"
+  # #   healthcheck:
+  # #     test: ["CMD", "redis-cli", "ping"]
+  # #     interval: 10s
+  # #     retries: 3
+
+  # ── Applications ───────────────────────────────────────────────────────────
+
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/Dockerfile.api
+  #   container_name: rag-api
+  #   ports:
+  #     - "5000:8080"
+  #   environment:
+  #     - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=ragdocumentchat;Username=postgres;Password=postgres
+  #     - AI__Provider=Ollama
+  #     - AI__Endpoint=http://host.docker.internal:11434
+  #     - AI__ChatModel=llama3.2
+  #     - AI__EmbeddingModel=nomic-embed-text
+  #     - AI__EmbeddingDimensions=768
+  #     - Cors__AllowedOrigins__0=http://localhost:5173
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # web:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/Dockerfile.web
+  #   container_name: rag-web
+  #   ports:
+  #     - "5173:8080"
+  #   environment:
+  #     - VITE_API_URL=http://localhost:5000
+  #   depends_on:
+  #     - api
+  #   restart: unless-stopped
+
+  # ── Observabilité ───────────────────────────────────────────────────────────
+
+  # otel-collector:
+  #   image: otel/opentelemetry-collector-contrib:0.117.0
+  #   container_name: rag-otel
+  #   command: ["--config=/etc/otelcol-contrib/config.yaml"]
+  #   volumes:
+  #     - ./k8s/infrastructure/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
+  #   ports:
+  #     - "4317:4317"
+  #     - "4318:4318"
+  #   depends_on:
+  #     - jaeger
+  #     - prometheus
+
+  # jaeger:
+  #   image: jaegertracing/all-in-one:1.65
+  #   container_name: rag-jaeger
+  #   ports:
+  #     - "16686:16686"
+  #   environment:
+  #     - COLLECTOR_OTLP_ENABLED=true
+
+  # prometheus:
+  #   image: prom/prometheus:v3.2.1
+  #   container_name: rag-prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./k8s/infrastructure/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  # grafana:
+  #   image: grafana/grafana:11.5.2
+  #   container_name: rag-grafana
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #     - GF_AUTH_ANONYMOUS_ENABLED=true
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+
+volumes:
+  postgres_data:
+  # grafana_data:
