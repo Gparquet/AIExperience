@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="AIExperience.App.Console/AIExperience.App.Console.csproj" />
+  <Project Path="AIExperience.Rag.Application/AIExperience.Rag.Application.csproj" />
+  <Project Path="AIExperience.Rag.Domain/AIExperience.Rag.Domain.csproj" />
+  <Project Path="AIExperience.Rag.Infrastructure/AIExperience.Rag.Infrastructure.csproj" />
+  <Project Path="AIExperience.Web.Api/AIExperience.Web.Api.csproj" />
+</Solution>
