@@ -1,4 +1,4 @@
-﻿using AIExperience.Rag.Domain.Entities;
+using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
@@ -15,15 +15,28 @@ using System.Text;
 
 namespace AIExperience.Rag.Infrastructure.AI.Rag
 {
+    /// <summary>
+    /// Orchestre le pipeline RAG complet en 6 étapes :
+    /// 1. Résolution de stratégie (Direct | HyDE | Fusion | Adaptive)
+    /// 2. Récupération des chunks (stratégie résolue → pgvector)
+    /// 3. Reclassement par pertinence réelle (Reranker LLM)
+    /// 4. Compression du contexte (optionnel)
+    /// 5. Construction du prompt + appel LLM
+    /// 6. Construction des citations
+    /// </summary>
     public sealed class RagPipelineService(
         IVectorStoreService vectorStoreService,
         IEmbeddingService embeddingService,
         IAdaptiveQueryRouter adaptiveQueryRouter,
+        IHydeService hydeService,
+        IMultiQueryService multiQueryService,
+        IRerankerService rerankerService,
         IContextCompressorService contextCompressorService,
         IConversationRepository conversationRepository,
         IOptions<RagOptions> options,
         IChatClient chatClient) : IRagPipelineService
     {
+        /// <inheritdoc/>
         public async Task<RagResponse> AskAsync(RagQuery query, CancellationToken ct = default)
         {
             var sw = Stopwatch.StartNew();
@@ -34,15 +47,21 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 ? await adaptiveQueryRouter.GetRagStrategyAsync(query.Question, ct)
                 : query.Strategy;
 
-            // 2. Récupération des chunks selon la stratégie
+            // 2. Récupération des chunks selon la stratégie résolue
             var rankedChunks = await RetrieveChunksAsync(query, strategy, ragOptions, ct);
 
-            // 3. Compression du contexte — réduit les tokens envoyés au LLM en conservant les phrases pertinentes.
+            // 3. Reclassement par pertinence réelle — corrige les faux positifs du cosinus
+            if (ragOptions.Reranker.Enabled && rankedChunks.Count > 0)
+                rankedChunks = await rerankerService.RerankAsync(
+                    query.Question, rankedChunks, ragOptions.Reranker.TopKAfterRerank, ct);
+
+            // 4. Compression du contexte — réduit les tokens envoyés au LLM en conservant les phrases pertinentes.
             //    Fallback sur les chunks bruts si la compression est désactivée ou retourne vide.
             IReadOnlyList<DocumentChunk> contextChunks;
             if (ragOptions.ContextCompression.Enabled && rankedChunks.Count > 0)
             {
-                var compressed = await contextCompressorService.CompressAsync(query.Question, rankedChunks.Select(r => r.Chunk), ct);
+                var compressed = await contextCompressorService.CompressAsync(
+                    query.Question, rankedChunks.Select(r => r.Chunk), ct);
                 contextChunks = compressed.Count > 0 ? compressed : rankedChunks.Select(r => r.Chunk).ToList();
             }
             else
@@ -50,16 +69,17 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 contextChunks = rankedChunks.Select(r => r.Chunk).ToList();
             }
 
-            // 4. Construction du prompt et appel au LLM
+            // 5. Construction du prompt et appel au LLM
             var chatHistory = await BuildChatHistoryAsync(query, contextChunks, ct);
             var completionResult = await chatClient.GetResponseAsync(
-                chatHistory.Select(m => new Microsoft.Extensions.AI.ChatMessage(m.Role == AuthorRole.User ? ChatRole.User : ChatRole.Assistant, m.Content)).ToList(),
+                chatHistory.Select(m => new Microsoft.Extensions.AI.ChatMessage(
+                    m.Role == AuthorRole.User ? ChatRole.User : ChatRole.Assistant, m.Content)).ToList(),
                 new ChatOptions { MaxOutputTokens = 2000, Temperature = 0.1f },
                 ct);
 
             sw.Stop();
 
-            // 5. Construction des citations
+            // 6. Construction des citations depuis les chunks reclassés
             var citations = rankedChunks.Select(r => Citation.Create(
                 Guid.Empty, r.Chunk.DocumentId,
                 $"Document {r.Chunk.DocumentId}",
@@ -76,6 +96,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             };
         }
 
+        /// <inheritdoc/>
         public async IAsyncEnumerable<RagStreamChunk> AskStreamAsync(
             RagQuery query,
             [EnumeratorCancellation] CancellationToken ct = default)
@@ -88,14 +109,20 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 ? await adaptiveQueryRouter.GetRagStrategyAsync(query.Question, ct)
                 : query.Strategy;
 
-            // 2. Récupération des chunks
+            // 2. Récupération des chunks selon la stratégie résolue
             var rankedChunks = await RetrieveChunksAsync(query, strategy, ragOptions, ct);
 
-            // 3. Compression du contexte
+            // 3. Reclassement par pertinence réelle
+            if (ragOptions.Reranker.Enabled && rankedChunks.Count > 0)
+                rankedChunks = await rerankerService.RerankAsync(
+                    query.Question, rankedChunks, ragOptions.Reranker.TopKAfterRerank, ct);
+
+            // 4. Compression du contexte
             IReadOnlyList<DocumentChunk> contextChunks;
             if (ragOptions.ContextCompression.Enabled && rankedChunks.Count > 0)
             {
-                var compressed = await contextCompressorService.CompressAsync(query.Question, rankedChunks.Select(r => r.Chunk), ct);
+                var compressed = await contextCompressorService.CompressAsync(
+                    query.Question, rankedChunks.Select(r => r.Chunk), ct);
                 contextChunks = compressed.Count > 0 ? compressed : rankedChunks.Select(r => r.Chunk).ToList();
             }
             else
@@ -103,14 +130,14 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 contextChunks = rankedChunks.Select(r => r.Chunk).ToList();
             }
 
-            // 4. Construction du prompt
+            // 5. Construction du prompt
             var chatHistory = await BuildChatHistoryAsync(query, contextChunks, ct);
             var messages = chatHistory
                 .Select(m => new Microsoft.Extensions.AI.ChatMessage(
                     m.Role == AuthorRole.User ? ChatRole.User : ChatRole.Assistant, m.Content))
                 .ToList();
 
-            // 5. Streaming LLM
+            // 6. Streaming LLM — chaque token est yield immédiatement
             var totalText = new StringBuilder();
             await foreach (var update in chatClient.GetStreamingResponseAsync(
                 messages,
@@ -127,7 +154,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
 
             sw.Stop();
 
-            // 6. Citations + réponse finale
+            // 7. Citations + réponse finale (événement done)
             var citations = rankedChunks.Select(r => Citation.Create(
                 Guid.Empty, r.Chunk.DocumentId,
                 $"Document {r.Chunk.DocumentId}",
@@ -148,29 +175,71 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             };
         }
 
+        /// <summary>
+        /// Récupère les chunks pertinents selon la stratégie résolue :
+        /// - Direct  : embed la question → recherche cosinus pgvector
+        /// - HyDE    : génère un doc hypothétique → embed ce doc → recherche cosinus
+        /// - Fusion  : génère N reformulations → N recherches parallèles → RRF
+        /// </summary>
         private async Task<IReadOnlyList<(DocumentChunk Chunk, double Score)>> RetrieveChunksAsync(
-        RagQuery query, RagStrategy strategy, RagOptions opts, CancellationToken ct)
+            RagQuery query, RagStrategy strategy, RagOptions opts, CancellationToken ct)
         {
-            //TODO: mise en place de hyde et de fusion
-
             var docIds = query.DocumentIds.Count > 0 ? query.DocumentIds.ToArray() : null;
 
-            // Direct
-            var directVector = await embeddingService.EmbedAsync(query.Question, ct);
-            var directChunks = await vectorStoreService.SearchAsync(directVector, opts.Retrieval.TopK, docIds, opts.Retrieval.ScoreThreshold, ct);
-            // TODO: mise en place d'un service de reclassement des chunks. 
-            // Evaluation de la pertinence réelle de chaque chunk par  rapport à la question indépendamment du cosinus
-            return directChunks;
+            switch (strategy)
+            {
+                case RagStrategy.HyDE:
+                {
+                    // Génère un doc fictif dont l'embedding est plus proche des vraies réponses que la question brute
+                    var hypotheticalDoc = await hydeService.GenerateHypotheticalDocAsync(query.Question, ct);
+                    var hydeVector = await embeddingService.EmbedAsync(hypotheticalDoc, ct);
+                    return await vectorStoreService.SearchAsync(
+                        hydeVector, opts.Retrieval.TopK, docIds, opts.Retrieval.ScoreThreshold, ct);
+                }
+
+                case RagStrategy.Fusion:
+                {
+                    // Génère N reformulations puis lance les recherches vectorielles en parallèle
+                    var variants = await multiQueryService.GenerateVariantsAsync(
+                        query.Question, opts.MultiQuery.VariantCount, ct);
+
+                    // Inclut la question originale pour garantir la couverture de base
+                    var allQueries = variants.Prepend(query.Question).Distinct().ToList();
+
+                    var searchTasks = allQueries.Select(async q =>
+                    {
+                        var vector = await embeddingService.EmbedAsync(q, ct);
+                        return await vectorStoreService.SearchAsync(
+                            vector, opts.Retrieval.TopK, docIds, opts.Retrieval.ScoreThreshold, ct);
+                    });
+
+                    var allResults = await Task.WhenAll(searchTasks);
+
+                    // Fusion des listes via Reciprocal Rank Fusion
+                    return ReciprocalRankFusion.Fuse(allResults);
+                }
+
+                default: // RagStrategy.Direct
+                {
+                    var directVector = await embeddingService.EmbedAsync(query.Question, ct);
+                    return await vectorStoreService.SearchAsync(
+                        directVector, opts.Retrieval.TopK, docIds, opts.Retrieval.ScoreThreshold, ct);
+                }
+            }
         }
 
+        /// <summary>
+        /// Construit le ChatHistory Semantic Kernel avec le prompt système,
+        /// l'historique de conversation et le contexte documentaire.
+        /// </summary>
         private async Task<ChatHistory> BuildChatHistoryAsync(
-        RagQuery query,
-        IReadOnlyList<DocumentChunk> contextChunks,
-        CancellationToken ct)
+            RagQuery query,
+            IReadOnlyList<DocumentChunk> contextChunks,
+            CancellationToken ct)
         {
             var chatHistory = new ChatHistory(RagPrompts.RagSystem);
 
-            // Injection de l'historique de conversation
+            // Injection de l'historique de conversation multi-tour
             if (query.IncludeHistory && query.SessionId != Guid.Empty)
             {
                 var pastMessages = await conversationRepository.GetMessagesAsync(
@@ -185,7 +254,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 }
             }
 
-            // Construction du contexte documentaire
+            // Construction du contexte documentaire depuis les chunks retenus
             var contextBuilder = new StringBuilder();
             foreach (var (chunk, i) in contextChunks.Select((c, i) => (c, i + 1)))
             {
@@ -200,7 +269,6 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
 
             chatHistory.AddUserMessage(userPrompt);
             return chatHistory;
-
         }
     }
 }

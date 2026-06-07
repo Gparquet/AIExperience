@@ -34,12 +34,13 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             var response = await chatClient.GetResponseAsync(messages, cancellationToken: ct);
             var raw = response.Text.Trim();
 
-            return raw switch
-            {
-                "HyDE" => RagStrategy.HyDE,
-                "Fusion" => RagStrategy.Fusion,
-                _ => RagStrategy.Direct
-            };
+            // Recherche de mot-clé dans la réponse : les petits modèles locaux ignorent souvent
+            // l'instruction "UNIQUEMENT un mot" et ajoutent du contexte autour du mot attendu.
+            if (raw.Contains("HyDE", StringComparison.OrdinalIgnoreCase))
+                return RagStrategy.HyDE;
+            if (raw.Contains("Fusion", StringComparison.OrdinalIgnoreCase))
+                return RagStrategy.Fusion;
+            return RagStrategy.Direct;
 
         }
     }

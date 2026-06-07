@@ -175,6 +175,12 @@ public static class DependencyInjection
     {
         services.AddScoped<IAdaptiveQueryRouter, AdaptiveQueryRouter>();
         services.AddScoped<IContextCompressorService, ContextCompressorService>();
+
+        // Stratégies de récupération avancées (Step 2 — Axe 1)
+        services.AddScoped<IHydeService, HydeService>();
+        services.AddScoped<IMultiQueryService, MultiQueryService>();
+        services.AddScoped<IRerankerService, LlmRerankerService>();
+
         services.AddScoped<IRagPipelineService, RagPipelineService>();
 
         return services;

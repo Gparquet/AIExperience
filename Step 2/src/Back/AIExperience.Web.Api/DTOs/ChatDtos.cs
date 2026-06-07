@@ -5,7 +5,7 @@ namespace AIExperience.Web.Api.DTOs;
 public record AskQuestionRequest(
     string Question,
     List<Guid> DocumentIds,
-    RagStrategy Strategy = RagStrategy.Adaptive);
+    RagStrategy Strategy = RagStrategy.HyDE);
 
 public record CitationResponse(
     string DocumentName,
