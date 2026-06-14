@@ -1,6 +1,7 @@
 import { NavLink, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import ChatPage from './pages/ChatPage';
 import DocumentsPage from './pages/DocumentsPage';
+import VideoPage from './pages/VideoPage';
 import './index.css';
 
 export default function App() {
@@ -16,6 +17,9 @@ export default function App() {
             <NavLink to="/" end className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
               Documents
             </NavLink>
+            <NavLink to="/video" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+              Vidéo
+            </NavLink>
             <NavLink to="/chat" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
               Chat
             </NavLink>
@@ -24,6 +28,7 @@ export default function App() {
         <main className="main-content">
           <Routes>
             <Route path="/" element={<DocumentsPage />} />
+            <Route path="/video" element={<VideoPage />} />
             <Route path="/chat" element={<ChatPage />} />
           </Routes>
         </main>

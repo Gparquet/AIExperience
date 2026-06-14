@@ -262,6 +262,39 @@ body { min-height: 100vh; }
   overflow: hidden;
 }
 
+/* ── Barre de filtre document ───────────────────────────────────────── */
+.chat-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 24px;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+.chat-filter-label { font-size: 13px; color: var(--color-muted); white-space: nowrap; }
+.chat-filter-select {
+  flex: 1;
+  max-width: 360px;
+  padding: 5px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.chat-filter-badge {
+  padding: 6px 24px;
+  background: #ede9fe;
+  font-size: 12px;
+  color: var(--color-primary);
+  border-bottom: 1px solid #ddd6fe;
+  flex-shrink: 0;
+}
+
+/* ── Colonne actions tableau ────────────────────────────────────────── */
+.col-actions { width: 90px; text-align: right; }
+
 .messages {
   flex: 1;
   overflow-y: auto;

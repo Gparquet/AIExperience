@@ -1,0 +1,1611 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG — Présentation Interactive</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:#0b0f1a; --surface:#141927; --surface-2:#1e2638; --border:rgba(255,255,255,0.08);
+  --purple:#7c3aed; --purple-2:#a78bfa; --cyan:#06b6d4; --cyan-2:#38d1e8;
+  --green:#10b981; --orange:#f59e0b; --red:#ef4444; --blue:#3b82f6;
+  --text:#e2e8f0; --muted:#94a3b8; --faint:#475569;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;overflow:hidden}
+
+/* PROGRESS */
+#progress-bar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--purple),var(--cyan));transition:width .4s ease;z-index:200}
+
+/* NAV */
+#nav-bar{position:fixed;bottom:0;left:0;right:0;height:52px;background:rgba(11,15,26,.92);backdrop-filter:blur(12px);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:20px;z-index:200}
+#nav-bar button{background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-size:1.2rem;width:38px;height:38px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+#nav-bar button:hover{background:var(--purple);border-color:var(--purple)}
+#nav-bar button:disabled{opacity:.3;cursor:not-allowed}
+#slide-num{color:var(--muted);font-size:.85rem;min-width:55px;text-align:center}
+#slide-title-bar{color:var(--faint);font-size:.78rem;max-width:300px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+/* SLIDES CONTAINER */
+#slides-container{position:fixed;inset:0;bottom:52px;overflow:hidden}
+.slide{position:absolute;inset:0;padding:40px 56px 24px;display:none;flex-direction:column;overflow-y:auto;animation:slideIn .3s ease forwards}
+.slide.active{display:flex}
+@keyframes slideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* TYPOGRAPHY */
+.slide-title{font-size:2rem;font-weight:700;letter-spacing:-.02em;margin-bottom:6px;line-height:1.2}
+.slide-sub{color:var(--muted);font-size:.95rem;margin-bottom:28px}
+.gradient-text{background:linear-gradient(135deg,var(--purple-2),var(--cyan-2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+
+/* CARDS */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 22px}
+.card-hi{background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(6,182,212,.08));border:1px solid rgba(124,58,237,.25);border-radius:12px;padding:18px 22px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.flex-col{display:flex;flex-direction:column;gap:12px}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:.75rem;font-weight:500}
+.b-purple{background:rgba(124,58,237,.2);color:var(--purple-2);border:1px solid rgba(124,58,237,.3)}
+.b-cyan{background:rgba(6,182,212,.2);color:var(--cyan-2);border:1px solid rgba(6,182,212,.3)}
+.b-green{background:rgba(16,185,129,.2);color:#34d399;border:1px solid rgba(16,185,129,.3)}
+.b-orange{background:rgba(245,158,11,.2);color:#fcd34d;border:1px solid rgba(245,158,11,.3)}
+.b-red{background:rgba(239,68,68,.2);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+
+/* BUTTONS */
+.btn{padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-size:.88rem;font-weight:500;transition:all .2s}
+.btn-primary{background:var(--purple);color:white}.btn-primary:hover{background:var(--purple-2);transform:translateY(-1px)}
+.btn-secondary{background:var(--surface-2);color:var(--text);border:1px solid var(--border)}.btn-secondary:hover{border-color:var(--purple)}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}.btn-ghost:hover{color:var(--text);background:var(--surface-2)}
+.btn-step{background:linear-gradient(135deg,var(--purple),#4f46e5);color:white;padding:10px 22px}
+.btn-step:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(124,58,237,.4)}
+.btn-step:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* CODE */
+.code-block{background:#0d1117;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px 18px;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.75;overflow-x:auto;white-space:pre}
+.kw{color:#f472b6}.str{color:#a3e635}.cmt{color:#64748b}.cls{color:#38bdf8}.num{color:#fb923c}.prop{color:#e2e8f0}
+.code-tabs{display:flex;gap:2px;margin-bottom:-1px}
+.code-tab{padding:7px 14px;border-radius:8px 8px 0 0;border:1px solid transparent;background:var(--surface);color:var(--muted);font-size:.78rem;cursor:pointer;transition:all .2s}
+.code-tab.active{background:#0d1117;border-color:rgba(255,255,255,.08);border-bottom-color:#0d1117;color:var(--text)}
+.code-panel{display:none}.code-panel.active{display:block}
+
+/* SVG STEPS */
+.svg-step{transition:opacity .5s ease,transform .5s ease}
+
+/* STEP DESCRIPTION */
+.step-desc{min-height:52px;padding:10px 14px;background:var(--surface);border-left:3px solid var(--purple);border-radius:0 8px 8px 0;font-size:.88rem;line-height:1.6;margin-top:10px;transition:all .3s}
+
+/* DEMO SLIDE */
+.demo-q{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:12px;font-size:1rem}
+.demo-panels{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.demo-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.demo-ph{padding:11px 14px;display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:.85rem}
+.demo-bad .demo-ph{background:rgba(239,68,68,.1);color:#fca5a5}
+.demo-good .demo-ph{background:rgba(16,185,129,.1);color:#34d399}
+.demo-body{padding:14px;font-size:.88rem;line-height:1.7;min-height:130px}
+.citation-badge{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.3);border-radius:6px;padding:2px 7px;margin:3px 2px}
+.halluc-tag{font-size:.7rem;background:rgba(239,68,68,.2);color:#fca5a5;border:1px solid rgba(239,68,68,.3);border-radius:4px;padding:1px 5px;margin-left:5px}
+@keyframes blink{50%{opacity:0}}
+.cursor{display:inline-block;width:2px;height:.9em;background:var(--cyan);margin-left:2px;animation:blink 1s step-end infinite;vertical-align:text-bottom}
+
+/* EMBED SVG */
+.q-dot{transition:cx .9s cubic-bezier(.34,1.56,.64,1),cy .9s cubic-bezier(.34,1.56,.64,1),opacity .4s}
+@keyframes ripple{0%{r:9;opacity:.8}100%{r:30;opacity:0}}
+
+/* CHUNKING */
+.chunk-0{background:rgba(124,58,237,.28);border-radius:2px}
+.chunk-1{background:rgba(6,182,212,.28);border-radius:2px}
+.chunk-ov{background:rgba(245,158,11,.4);border-radius:2px}
+
+/* STRATEGY TABS */
+.strat-tabs{display:flex;gap:8px;margin-bottom:14px}
+.strat-tab{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;font-size:.85rem;font-weight:500;transition:all .2s}
+.strat-tab.active{background:var(--purple);color:white;border-color:var(--purple)}
+.strat-tab:hover:not(.active){border-color:var(--purple);color:var(--text)}
+.strat-panel{display:none}
+.strat-panel.active{display:grid;grid-template-columns:1fr 1.6fr;gap:20px;align-items:start}
+
+/* FUNNEL */
+.chunk-chip{display:inline-flex;align-items:center;justify-content:center;width:28px;height:20px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;font-size:.65rem;color:var(--muted);margin:2px;transition:all .3s}
+.chunk-chip.lit{background:var(--purple);border-color:var(--purple);color:white}
+.chunk-chip.kept{background:var(--green);border-color:var(--green);color:white}
+
+/* ARCH LAYERS */
+.arch-layer{padding:10px 18px;border-radius:8px;margin-bottom:5px;display:flex;align-items:center;gap:12px;font-size:.88rem}
+
+/* COMPARE TABLE */
+.cmp-table{width:100%;border-collapse:collapse;font-size:.85rem}
+.cmp-table th{padding:11px 14px;text-align:left;font-weight:600;border-bottom:2px solid var(--border)}
+.cmp-table th:first-child{color:var(--muted)}
+.cmp-table th.rag{color:var(--cyan-2)}.cmp-table th.ft{color:var(--orange)}.cmp-table th.ctx{color:var(--purple-2)}
+.cmp-table td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table tr:hover td{background:var(--surface)}
+.yes{color:#34d399;font-size:1rem}.no{color:#f87171;font-size:1rem}.mid{color:var(--orange);font-size:1rem}
+
+/* KEY POINTS */
+.kp{display:flex;gap:12px;align-items:flex-start;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;opacity:0;transform:translateY(8px);transition:opacity .4s ease,transform .4s ease}
+.kp.visible{opacity:1;transform:translateY(0)}
+.kp-icon{font-size:1.3rem;min-width:28px;line-height:1}
+.kp-text{font-size:.88rem;line-height:1.5}
+
+/* COVER */
+#s0{align-items:center;justify-content:center;text-align:center;background:radial-gradient(ellipse at center,rgba(124,58,237,.18) 0%,transparent 65%),radial-gradient(ellipse at 80% 20%,rgba(6,182,212,.12) 0%,transparent 50%)}
+.cover-rag{font-size:8rem;font-weight:800;letter-spacing:-.05em;line-height:1;background:linear-gradient(135deg,#a78bfa 0%,#38bdf8 50%,#34d399 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:4px}
+.cover-long{font-size:1.2rem;color:var(--muted);margin-bottom:24px;letter-spacing:.04em}
+.cover-tag{font-size:1.4rem;font-weight:600;margin-bottom:36px}
+.cover-hint{font-size:.82rem;color:var(--faint)}
+.orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.1;animation:float 8s ease-in-out infinite;pointer-events:none}
+.orb-1{width:320px;height:320px;background:var(--purple);top:8%;left:4%;animation-delay:0s}
+.orb-2{width:260px;height:260px;background:var(--cyan);top:55%;right:6%;animation-delay:3s}
+.orb-3{width:200px;height:200px;background:var(--green);bottom:12%;left:42%;animation-delay:1.5s}
+@keyframes float{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-28px) scale(1.04)}}
+
+kbd{background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:.8rem;font-family:inherit}
+
+/* DÉMO LIVE — CHECKLIST */
+.checklist-item{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:all .25s;user-select:none}
+.checklist-item.checked{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.3)}
+.ci-check{width:18px;height:18px;border:2px solid var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.7rem;flex-shrink:0;transition:all .25s}
+.checklist-item.checked .ci-check{background:var(--green);border-color:var(--green);color:white}
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+<div id="slides-container">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 0 — COUVERTURE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s0">
+  <div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div>
+  <div style="position:relative;z-index:1;text-align:center;">
+    <div class="cover-rag">RAG</div>
+    <div class="cover-long">Retrieval-Augmented Generation</div>
+    <div class="cover-tag">De la théorie à la pratique</div>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:40px;">
+      <span class="badge b-purple">📄 Ingestion documentaire</span>
+      <span class="badge b-cyan">🔍 Recherche vectorielle</span>
+      <span class="badge b-green">🤖 Génération augmentée</span>
+      <span class="badge b-orange">🎥 Vidéo & Audio</span>
+    </div>
+    <div class="cover-hint">Appuyez sur <kbd>→</kbd> ou cliquez <strong style="color:var(--text);">▶</strong> pour commencer</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 1 — LE PROBLÈME -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s1">
+  <h2 class="slide-title">Un assistant brillant… mais <span class="gradient-text">amnésique</span></h2>
+  <p class="slide-sub">Le problème des IA génériques sur vos données métier</p>
+  <div class="card-hi" style="margin-bottom:20px;display:flex;gap:16px;align-items:flex-start;">
+    <div style="font-size:2rem;line-height:1;min-width:36px;">👤</div>
+    <div>
+      <p style="font-weight:600;margin-bottom:6px;">Imaginez un nouvel employé…</p>
+      <p style="color:var(--muted);font-size:.92rem;line-height:1.6;">…qui aurait lu Internet entier pendant ses études, mais qui ne connaît <strong style="color:var(--text);">rien</strong> de votre entreprise. Pas vos process, pas vos contrats. Et quand on lui pose une question qu'il ne maîtrise pas, au lieu de dire « je ne sais pas », il <strong style="color:#fca5a5;">invente une réponse convaincante</strong>.</p>
+    </div>
+  </div>
+  <div class="grid-3" style="margin-bottom:18px;">
+    <div class="card"><div style="font-size:2rem;margin-bottom:8px;">🗓️</div><div style="font-weight:600;margin-bottom:5px;">Mémoire figée</div><div style="color:var(--muted);font-size:.85rem;line-height:1.5;">Connaissance arrêtée à la date d'entraînement. Comme consulter un annuaire de 2022 pour trouver un numéro en 2026.</div></div>
+    <div class="card"><div style="font-size:2rem;margin-bottom:8px;">🏢</div><div style="font-weight:600;margin-bottom:5px;">Données internes absentes</div><div style="color:var(--muted);font-size:.85rem;line-height:1.5;">Demander à ChatGPT votre politique de congés, c'est comme demander à un passant dans la rue.</div></div>
+    <div class="card"><div style="font-size:2rem;margin-bottom:8px;">👻</div><div style="font-weight:600;margin-bottom:5px;">Hallucinations</div><div style="color:var(--muted);font-size:.85rem;line-height:1.5;">L'IA fabrique des réponses fausses avec un aplomb total. Comme un GPS qui dit « tournez à droite » alors que la route n'existe pas.</div></div>
+  </div>
+  <div style="padding:12px 16px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:10px;font-size:.88rem;line-height:1.6;">
+    💡 <strong>Résultat :</strong> sur vos données métier, une IA générique peut être non seulement inutile, mais <span style="color:#fca5a5;">activement dangereuse</span> si ses réponses inventées sont acceptées sans vérification.
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 2 — DÉMO INTERACTIVE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s2">
+  <h2 class="slide-title">Voyons la <span class="gradient-text">différence</span> en direct</h2>
+  <p class="slide-sub">La même question — deux approches radicalement différentes</p>
+  <div class="demo-q">
+    <span style="font-size:1.4rem;">💬</span>
+    <span><em>"<strong>Quelle est notre procédure de remboursement des frais de transport ?</strong>"</em></span>
+  </div>
+  <div class="demo-panels">
+    <div class="demo-panel demo-bad">
+      <div class="demo-ph">
+        <span>❌ Sans RAG — réponse générique</span>
+        <button class="btn btn-ghost" style="font-size:.75rem;padding:3px 9px;" onclick="demoNoRag()">Voir</button>
+      </div>
+      <div class="demo-body" id="resp-no-rag"><span style="color:var(--faint);font-style:italic;">Cliquez "Voir" pour simuler la réponse...</span></div>
+    </div>
+    <div class="demo-panel demo-good">
+      <div class="demo-ph">
+        <span>✅ Avec RAG — réponse sourcée</span>
+        <button class="btn btn-ghost" style="font-size:.75rem;padding:3px 9px;" onclick="demoWithRag()">Voir</button>
+      </div>
+      <div class="demo-body" id="resp-with-rag"><span style="color:var(--faint);font-style:italic;">Cliquez "Voir" pour simuler la réponse...</span></div>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:center;gap:10px;margin-top:14px;">
+    <button class="btn btn-primary" onclick="demoAll()">▶ Lancer les deux</button>
+    <button class="btn btn-secondary" onclick="demoReset()">🔄 Réinitialiser</button>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 3 — QU'EST-CE QUE LE RAG ? -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s3">
+  <h2 class="slide-title">RAG — La <span class="gradient-text">bibliothécaire</span> intelligente</h2>
+  <p class="slide-sub">Une analogie pour tout comprendre en 30 secondes</p>
+  <div class="grid-2" style="gap:28px;align-items:start;">
+    <div class="flex-col">
+      <div class="card" style="border-left:3px solid var(--red);">
+        <div style="font-weight:600;color:#fca5a5;margin-bottom:7px;">❌ Sans RAG</div>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;">Vous posez une question à un ami cultivé. Il répond <strong style="color:var(--text);">de mémoire</strong>. Parfois juste, parfois inventé — avec la même assurance.</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--green);">
+        <div style="font-weight:600;color:#34d399;margin-bottom:7px;">✅ Avec RAG</div>
+        <p style="font-size:.88rem;color:var(--muted);line-height:1.6;">Vous posez la question à une bibliothécaire. Elle <strong style="color:var(--text);">cherche les bons livres</strong>, lit les pages pertinentes, puis vous répond en <strong style="color:var(--text);">citant ses sources</strong>.</p>
+      </div>
+      <div class="card-hi" style="font-size:.88rem;line-height:1.65;">
+        <strong>En une phrase :</strong> on donne à l'IA accès à <strong>votre bibliothèque privée</strong> et on lui impose — <em style="color:var(--cyan-2);">« Cherche d'abord. Cite tes sources. »</em>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="badge b-green">🔄 Toujours à jour</span>
+        <span class="badge b-cyan">📎 Sources vérifiables</span>
+        <span class="badge b-purple">🔒 Données privées</span>
+        <span class="badge b-orange">🎯 Moins d'hallucinations</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:center;">
+      <svg viewBox="0 0 280 340" style="width:100%;max-width:260px;">
+        <defs>
+          <linearGradient id="g3a" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#5b21b6"/></linearGradient>
+          <linearGradient id="g3b" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#0284c7"/></linearGradient>
+          <linearGradient id="g3c" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient>
+          <linearGradient id="g3d" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+          <filter id="sh3"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="rgba(0,0,0,.35)"/></filter>
+          <marker id="ar3" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,8 3.5,0 7" fill="#6b7280"/></marker>
+        </defs>
+        <rect x="65" y="8" width="150" height="55" rx="10" fill="url(#g3a)" filter="url(#sh3)"/>
+        <text x="140" y="30" text-anchor="middle" fill="white" font-size="18">📄</text>
+        <text x="140" y="51" text-anchor="middle" fill="white" font-size="12" font-weight="600">Vos documents</text>
+        <line x1="140" y1="65" x2="140" y2="85" stroke="#6b7280" stroke-width="2" marker-end="url(#ar3)"/>
+        <rect x="65" y="87" width="150" height="55" rx="10" fill="url(#g3b)" filter="url(#sh3)"/>
+        <text x="140" y="109" text-anchor="middle" fill="white" font-size="18">🔍</text>
+        <text x="140" y="130" text-anchor="middle" fill="white" font-size="12" font-weight="600">Recherche auto</text>
+        <line x1="140" y1="144" x2="140" y2="164" stroke="#6b7280" stroke-width="2" marker-end="url(#ar3)"/>
+        <rect x="65" y="166" width="150" height="55" rx="10" fill="url(#g3c)" filter="url(#sh3)"/>
+        <text x="140" y="188" text-anchor="middle" fill="white" font-size="18">🤖</text>
+        <text x="140" y="209" text-anchor="middle" fill="white" font-size="12" font-weight="600">LLM + Contexte</text>
+        <line x1="140" y1="223" x2="140" y2="243" stroke="#6b7280" stroke-width="2" marker-end="url(#ar3)"/>
+        <rect x="65" y="245" width="150" height="55" rx="10" fill="url(#g3d)" filter="url(#sh3)"/>
+        <text x="140" y="267" text-anchor="middle" fill="white" font-size="18">✅</text>
+        <text x="140" y="288" text-anchor="middle" fill="white" font-size="12" font-weight="600">Réponse + Sources</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 4 — LES EMBEDDINGS -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s4">
+  <h2 class="slide-title">Les embeddings : <span class="gradient-text">GPS du sens</span></h2>
+  <p class="slide-sub">Comment l'IA retrouve des documents par le sens — pas par les mots-clés</p>
+  <div class="grid-2" style="gap:24px;align-items:start;">
+    <div class="flex-col">
+      <div class="card"><div style="font-size:1.1rem;margin-bottom:8px;font-weight:600;">🗺️ L'analogie de la carte</div><p style="font-size:.87rem;color:var(--muted);line-height:1.6;">Imaginez une carte où chaque texte est placé selon <strong style="color:var(--text);">son sens</strong>. Deux textes qui parlent du même sujet sont <strong style="color:var(--text);">proches sur la carte</strong>, même s'ils utilisent des mots complètement différents.</p></div>
+      <div class="card"><div style="font-size:.9rem;font-weight:600;margin-bottom:10px;">📍 Exemple concret</div><div style="font-size:.84rem;line-height:1.9;"><div>🟢 <em>"Comment poser des congés ?"</em></div><div style="margin-left:16px;color:var(--muted);">→ proche de "Politique de RTT", "Vacances annuelles"</div><div>🔵 <em>"Frais de transport ?"</em></div><div style="margin-left:16px;color:var(--muted);">→ proche de "Note de frais", "Remboursement"</div></div></div>
+      <div class="card" style="border-left:3px solid var(--cyan);">
+        <div style="font-size:.87rem;line-height:1.65;color:var(--muted);">💡 <strong style="color:var(--text);">Pourquoi mieux que Ctrl+F ?</strong><br/>Un Ctrl+F cherche les mots <em>exacts</em>. L'embedding comprend que « congés payés » et « vacances » ont le même <em>sens</em> et retourne le bon document.</div>
+      </div>
+    </div>
+    <div>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:8px;">Cliquez sur une question pour voir vers quel cluster elle s'oriente :</p>
+      <svg id="embed-svg" viewBox="0 0 620 300" style="width:100%;background:var(--surface);border-radius:12px;border:1px solid var(--border);">
+        <defs>
+          <radialGradient id="rg1" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#10b981" stop-opacity=".28"/><stop offset="100%" stop-color="#10b981" stop-opacity="0"/></radialGradient>
+          <radialGradient id="rg2" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#3b82f6" stop-opacity=".28"/><stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/></radialGradient>
+          <radialGradient id="rg3" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#f59e0b" stop-opacity=".28"/><stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/></radialGradient>
+        </defs>
+        <ellipse cx="115" cy="95" rx="90" ry="75" fill="url(#rg1)"/>
+        <ellipse cx="505" cy="95" rx="90" ry="75" fill="url(#rg2)"/>
+        <ellipse cx="310" cy="240" rx="90" ry="60" fill="url(#rg3)"/>
+        <text x="115" y="16" text-anchor="middle" fill="#34d399" font-size="11" font-weight="600">🟢 Congés / RTT</text>
+        <text x="505" y="16" text-anchor="middle" fill="#60a5fa" font-size="11" font-weight="600">🔵 Facturation / Frais</text>
+        <text x="310" y="293" text-anchor="middle" fill="#fcd34d" font-size="11" font-weight="600">🟡 Technique / Code</text>
+        <!-- Cluster 1 -->
+        <circle cx="100" cy="80" r="5" fill="#10b981" opacity=".85"/><text x="113" y="84" fill="#94a3b8" font-size="9.5">Demande congés</text>
+        <circle cx="135" cy="60" r="5" fill="#10b981" opacity=".85"/><text x="148" y="64" fill="#94a3b8" font-size="9.5">RTT et repos</text>
+        <circle cx="85" cy="115" r="5" fill="#10b981" opacity=".85"/><text x="98" y="119" fill="#94a3b8" font-size="9.5">Vacances ann.</text>
+        <circle cx="130" cy="108" r="4" fill="#10b981" opacity=".6"/>
+        <circle cx="95" cy="55" r="4" fill="#10b981" opacity=".6"/>
+        <!-- Cluster 2 -->
+        <circle cx="492" cy="78" r="5" fill="#3b82f6" opacity=".85"/><text x="505" y="82" fill="#94a3b8" font-size="9.5">Note de frais</text>
+        <circle cx="525" cy="58" r="5" fill="#3b82f6" opacity=".85"/><text x="538" y="62" fill="#94a3b8" font-size="9.5">Remboursement</text>
+        <circle cx="476" cy="112" r="5" fill="#3b82f6" opacity=".85"/><text x="489" y="116" fill="#94a3b8" font-size="9.5">Facture client</text>
+        <circle cx="518" cy="108" r="4" fill="#3b82f6" opacity=".6"/>
+        <circle cx="490" cy="52" r="4" fill="#3b82f6" opacity=".6"/>
+        <!-- Cluster 3 -->
+        <circle cx="290" cy="232" r="5" fill="#f59e0b" opacity=".85"/><text x="303" y="236" fill="#94a3b8" font-size="9.5">Déclarer un bug</text>
+        <circle cx="325" cy="218" r="5" fill="#f59e0b" opacity=".85"/><text x="338" y="222" fill="#94a3b8" font-size="9.5">Code review</text>
+        <circle cx="275" cy="256" r="5" fill="#f59e0b" opacity=".85"/><text x="288" y="260" fill="#94a3b8" font-size="9.5">Déploiement</text>
+        <circle cx="335" cy="252" r="4" fill="#f59e0b" opacity=".6"/>
+        <circle cx="305" cy="212" r="4" fill="#f59e0b" opacity=".6"/>
+        <!-- Query dot -->
+        <circle id="qdot" cx="310" cy="155" r="9" fill="#ef4444" opacity="0" stroke="rgba(239,68,68,.5)" stroke-width="3"/>
+        <circle id="qripple" cx="310" cy="155" r="9" fill="none" stroke="#ef4444" stroke-width="1.5" opacity="0"/>
+        <text id="qlabel" x="310" y="175" text-anchor="middle" fill="#ef4444" font-size="9.5" opacity="0"></text>
+        <text id="qcenter-hint" x="310" y="158" text-anchor="middle" fill="var(--faint)" font-size="9.5">espace sémantique</text>
+      </svg>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <button class="btn btn-secondary" style="font-size:.78rem;padding:6px 11px;" onclick="showQuery(0)">🗓️ Congés en janvier ?</button>
+        <button class="btn btn-secondary" style="font-size:.78rem;padding:6px 11px;" onclick="showQuery(1)">💰 Frais de transport ?</button>
+        <button class="btn btn-secondary" style="font-size:.78rem;padding:6px 11px;" onclick="showQuery(2)">🐛 Déclarer un incident ?</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 5 — PIPELINE INGESTION -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s5">
+  <h2 class="slide-title">Phase 1 — <span class="gradient-text">Indexation</span> (hors ligne)</h2>
+  <p class="slide-sub">Comme un supermarché qui déballe, étiquette et range ses produits avant l'ouverture</p>
+  <svg id="ingestion-svg" viewBox="0 0 880 145" style="width:100%;max-height:150px;">
+    <defs>
+      <linearGradient id="gi0" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient>
+      <linearGradient id="gi1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+      <linearGradient id="gi2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#0284c7"/></linearGradient>
+      <linearGradient id="gi3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+      <filter id="shi"><feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="rgba(0,0,0,.4)"/></filter>
+      <marker id="ari" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#6b7280"/></marker>
+    </defs>
+    <!-- Step 0 -->
+    <g id="is0" opacity="0" class="svg-step">
+      <rect x="5" y="10" width="188" height="125" rx="12" fill="url(#gi0)" filter="url(#shi)"/>
+      <text x="99" y="46" text-anchor="middle" fill="white" font-size="22">📄</text>
+      <text x="99" y="70" text-anchor="middle" fill="white" font-size="13" font-weight="700">Extraction</text>
+      <text x="99" y="90" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">PDF · Word · HTML</text>
+      <text x="99" y="107" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">Vidéo · Audio</text>
+      <text x="99" y="124" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="9.5">→ texte brut</text>
+    </g>
+    <g id="ia0" opacity="0" class="svg-step">
+      <line x1="195" y1="72" x2="228" y2="72" stroke="#6b7280" stroke-width="2.5" marker-end="url(#ari)"/>
+    </g>
+    <!-- Step 1 -->
+    <g id="is1" opacity="0" class="svg-step">
+      <rect x="232" y="10" width="188" height="125" rx="12" fill="url(#gi1)" filter="url(#shi)"/>
+      <text x="326" y="46" text-anchor="middle" fill="white" font-size="22">✂️</text>
+      <text x="326" y="70" text-anchor="middle" fill="white" font-size="13" font-weight="700">Chunking</text>
+      <text x="326" y="90" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">800 caractères</text>
+      <text x="326" y="107" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">Overlap : 100</text>
+      <text x="326" y="124" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="9.5">RecursiveChunker</text>
+    </g>
+    <g id="ia1" opacity="0" class="svg-step">
+      <line x1="422" y1="72" x2="455" y2="72" stroke="#6b7280" stroke-width="2.5" marker-end="url(#ari)"/>
+    </g>
+    <!-- Step 2 -->
+    <g id="is2" opacity="0" class="svg-step">
+      <rect x="459" y="10" width="188" height="125" rx="12" fill="url(#gi2)" filter="url(#shi)"/>
+      <text x="553" y="46" text-anchor="middle" fill="white" font-size="22">🔢</text>
+      <text x="553" y="70" text-anchor="middle" fill="white" font-size="13" font-weight="700">Embedding</text>
+      <text x="553" y="90" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">nomic-embed-text</text>
+      <text x="553" y="107" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">768 dimensions</text>
+      <text x="553" y="124" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="9.5">float[] par chunk</text>
+    </g>
+    <g id="ia2" opacity="0" class="svg-step">
+      <line x1="649" y1="72" x2="682" y2="72" stroke="#6b7280" stroke-width="2.5" marker-end="url(#ari)"/>
+    </g>
+    <!-- Step 3 -->
+    <g id="is3" opacity="0" class="svg-step">
+      <rect x="686" y="10" width="188" height="125" rx="12" fill="url(#gi3)" filter="url(#shi)"/>
+      <text x="780" y="46" text-anchor="middle" fill="white" font-size="22">🗄️</text>
+      <text x="780" y="70" text-anchor="middle" fill="white" font-size="13" font-weight="700">pgvector</text>
+      <text x="780" y="90" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">PostgreSQL 17</text>
+      <text x="780" y="107" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">Index HNSW</text>
+      <text x="780" y="124" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="9.5">cosine similarity</text>
+    </g>
+  </svg>
+  <div id="i-desc" class="step-desc" style="color:var(--muted);font-style:italic;">Cliquez sur "Étape suivante" pour découvrir chaque étape…</div>
+  <div style="display:flex;align-items:center;gap:14px;margin-top:10px;">
+    <button id="i-btn" class="btn btn-step" onclick="iNext()">Étape suivante →</button>
+    <span id="i-counter" style="color:var(--muted);font-size:.85rem;">0 / 4</span>
+    <button class="btn btn-ghost" style="font-size:.8rem;padding:6px 12px;" onclick="iReset()">↺ Recommencer</button>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 6 — PIPELINE REQUÊTE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s6">
+  <h2 class="slide-title">Phase 2 — <span class="gradient-text">Requête</span> (en ligne)</h2>
+  <p class="slide-sub">À chaque question, le système retrouve les passages pertinents et génère une réponse sourcée</p>
+  <svg id="query-svg" viewBox="0 0 1040 145" style="width:100%;max-height:150px;">
+    <defs>
+      <linearGradient id="gq0" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient>
+      <linearGradient id="gq1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#0284c7"/></linearGradient>
+      <linearGradient id="gq2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+      <linearGradient id="gq3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient>
+      <linearGradient id="gq4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+      <filter id="shq"><feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="rgba(0,0,0,.4)"/></filter>
+      <marker id="arq" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#6b7280"/></marker>
+    </defs>
+    <g id="qs0" opacity="0" class="svg-step">
+      <rect x="5" y="10" width="175" height="125" rx="12" fill="url(#gq0)" filter="url(#shq)"/>
+      <text x="92" y="46" text-anchor="middle" fill="white" font-size="22">❓</text>
+      <text x="92" y="70" text-anchor="middle" fill="white" font-size="13" font-weight="700">Question</text>
+      <text x="92" y="90" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">Langage naturel</text>
+      <text x="92" y="107" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">Stratégie : Adaptive</text>
+      <text x="92" y="124" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="9.5">→ pipeline RAG</text>
+    </g>
+    <g id="qa0" opacity="0" class="svg-step"><line x1="182" y1="72" x2="214" y2="72" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arq)"/></g>
+    <g id="qs1" opacity="0" class="svg-step">
+      <rect x="218" y="10" width="175" height="125" rx="12" fill="url(#gq1)" filter="url(#shq)"/>
+      <text x="305" y="46" text-anchor="middle" fill="white" font-size="22">🔢</text>
+      <text x="305" y="70" text-anchor="middle" fill="white" font-size="13" font-weight="700">Embed Question</text>
+      <text x="305" y="90" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">même modèle</text>
+      <text x="305" y="107" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">768 dimensions</text>
+      <text x="305" y="124" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="9.5">compatibilité ✓</text>
+    </g>
+    <g id="qa1" opacity="0" class="svg-step"><line x1="395" y1="72" x2="427" y2="72" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arq)"/></g>
+    <g id="qs2" opacity="0" class="svg-step">
+      <rect x="431" y="10" width="175" height="125" rx="12" fill="url(#gq2)" filter="url(#shq)"/>
+      <text x="518" y="46" text-anchor="middle" fill="white" font-size="22">🔍</text>
+      <text x="518" y="70" text-anchor="middle" fill="white" font-size="13" font-weight="700">Top-K Cosinus</text>
+      <text x="518" y="90" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">Top-10 chunks</text>
+      <text x="518" y="107" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">seuil : 0.3</text>
+      <text x="518" y="124" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="9.5">pgvector HNSW</text>
+    </g>
+    <g id="qa2" opacity="0" class="svg-step"><line x1="608" y1="72" x2="640" y2="72" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arq)"/></g>
+    <g id="qs3" opacity="0" class="svg-step">
+      <rect x="644" y="10" width="175" height="125" rx="12" fill="url(#gq3)" filter="url(#shq)"/>
+      <text x="731" y="46" text-anchor="middle" fill="white" font-size="22">🤖</text>
+      <text x="731" y="70" text-anchor="middle" fill="white" font-size="13" font-weight="700">LLM</text>
+      <text x="731" y="90" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">Prompt RAG</text>
+      <text x="731" y="107" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">temp=0.1</text>
+      <text x="731" y="124" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="9.5">Llama / Azure OAI</text>
+    </g>
+    <g id="qa3" opacity="0" class="svg-step"><line x1="821" y1="72" x2="853" y2="72" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arq)"/></g>
+    <g id="qs4" opacity="0" class="svg-step">
+      <rect x="857" y="10" width="175" height="125" rx="12" fill="url(#gq4)" filter="url(#shq)"/>
+      <text x="944" y="46" text-anchor="middle" fill="white" font-size="22">✅</text>
+      <text x="944" y="70" text-anchor="middle" fill="white" font-size="13" font-weight="700">Réponse</text>
+      <text x="944" y="90" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">+ Citations</text>
+      <text x="944" y="107" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="10.5">doc · page · score</text>
+      <text x="944" y="124" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="9.5">100% traçable</text>
+    </g>
+  </svg>
+  <div id="q-desc" class="step-desc" style="color:var(--muted);font-style:italic;">Cliquez sur "Étape suivante" pour découvrir chaque étape…</div>
+  <div style="display:flex;align-items:center;gap:14px;margin-top:10px;">
+    <button id="q-btn" class="btn btn-step" onclick="qNext()">Étape suivante →</button>
+    <span id="q-counter" style="color:var(--muted);font-size:.85rem;">0 / 5</span>
+    <button class="btn btn-ghost" style="font-size:.8rem;padding:6px 12px;" onclick="qReset()">↺ Recommencer</button>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 6b — VUE D'ENSEMBLE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s6b">
+  <h2 class="slide-title">Vue d'ensemble du <span class="gradient-text">Pipeline RAG</span></h2>
+  <p class="slide-sub">Les deux phases en un seul schéma — l'indexation construit la base, la requête l'interroge</p>
+  <svg viewBox="0 0 900 310" style="width:100%;max-height:330px;">
+    <defs>
+      <linearGradient id="gv0" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient>
+      <linearGradient id="gv1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+      <linearGradient id="gv2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#0284c7"/></linearGradient>
+      <linearGradient id="gv3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+      <linearGradient id="gv4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient>
+      <linearGradient id="gv5" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient>
+      <filter id="shv"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="rgba(0,0,0,.35)"/></filter>
+      <marker id="arv" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#6b7280"/></marker>
+      <marker id="arvd" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4b5563"/></marker>
+    </defs>
+    <!-- Phase 1 background -->
+    <rect x="4" y="4" width="892" height="125" rx="10" fill="rgba(124,58,237,.07)" stroke="rgba(124,58,237,.2)" stroke-width="1"/>
+    <text x="14" y="20" fill="#a78bfa" font-size="10.5" font-weight="700">📚 PHASE D'INDEXATION — hors ligne</text>
+    <!-- Phase 2 background -->
+    <rect x="4" y="180" width="892" height="125" rx="10" fill="rgba(6,182,212,.07)" stroke="rgba(6,182,212,.2)" stroke-width="1"/>
+    <text x="14" y="196" fill="#38d1e8" font-size="10.5" font-weight="700">🔍 PHASE DE REQUÊTE — en ligne</text>
+    <!-- Phase 1 boxes -->
+    <rect x="18" y="26" width="145" height="92" rx="10" fill="url(#gv0)" filter="url(#shv)"/>
+    <text x="90" y="56" text-anchor="middle" fill="white" font-size="18">📄</text>
+    <text x="90" y="75" text-anchor="middle" fill="white" font-size="11" font-weight="600">Extraction</text>
+    <text x="90" y="91" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">PDF · HTML · Vidéo</text>
+    <text x="90" y="108" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">→ texte brut</text>
+    <line x1="165" y1="72" x2="194" y2="72" stroke="#6b7280" stroke-width="2" marker-end="url(#arv)"/>
+    <rect x="197" y="26" width="145" height="92" rx="10" fill="url(#gv1)" filter="url(#shv)"/>
+    <text x="269" y="56" text-anchor="middle" fill="white" font-size="18">✂️</text>
+    <text x="269" y="75" text-anchor="middle" fill="white" font-size="11" font-weight="600">Chunking</text>
+    <text x="269" y="91" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">800 chars / 100 overlap</text>
+    <text x="269" y="108" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">RecursiveChunker</text>
+    <line x1="344" y1="72" x2="373" y2="72" stroke="#6b7280" stroke-width="2" marker-end="url(#arv)"/>
+    <rect x="376" y="26" width="145" height="92" rx="10" fill="url(#gv2)" filter="url(#shv)"/>
+    <text x="448" y="56" text-anchor="middle" fill="white" font-size="18">🔢</text>
+    <text x="448" y="75" text-anchor="middle" fill="white" font-size="11" font-weight="600">Embedding</text>
+    <text x="448" y="91" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">nomic-embed-text</text>
+    <text x="448" y="108" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">768 dimensions</text>
+    <line x1="523" y1="72" x2="552" y2="72" stroke="#6b7280" stroke-width="2" marker-end="url(#arv)"/>
+    <rect x="555" y="26" width="145" height="92" rx="10" fill="url(#gv3)" filter="url(#shv)"/>
+    <text x="627" y="56" text-anchor="middle" fill="white" font-size="18">🗄️</text>
+    <text x="627" y="75" text-anchor="middle" fill="white" font-size="11" font-weight="600">pgvector</text>
+    <text x="627" y="91" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">PostgreSQL + HNSW</text>
+    <text x="627" y="108" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">cosine similarity</text>
+    <!-- Vertical connection -->
+    <line x1="627" y1="120" x2="627" y2="168" stroke="#4b5563" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arvd)"/>
+    <text x="650" y="148" fill="#6b7280" font-size="8.5">même store</text>
+    <!-- Phase 2 boxes -->
+    <rect x="18" y="200" width="145" height="92" rx="10" fill="url(#gv4)" filter="url(#shv)"/>
+    <text x="90" y="230" text-anchor="middle" fill="white" font-size="18">❓</text>
+    <text x="90" y="249" text-anchor="middle" fill="white" font-size="11" font-weight="600">Question</text>
+    <text x="90" y="265" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">Langage naturel</text>
+    <text x="90" y="282" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">Adaptive Router</text>
+    <line x1="165" y1="246" x2="194" y2="246" stroke="#6b7280" stroke-width="2" marker-end="url(#arv)"/>
+    <rect x="197" y="200" width="145" height="92" rx="10" fill="url(#gv2)" filter="url(#shv)"/>
+    <text x="269" y="230" text-anchor="middle" fill="white" font-size="18">🔢</text>
+    <text x="269" y="249" text-anchor="middle" fill="white" font-size="11" font-weight="600">Embed Question</text>
+    <text x="269" y="265" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">même modèle</text>
+    <text x="269" y="282" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">compatibilité ✓</text>
+    <line x1="344" y1="246" x2="373" y2="246" stroke="#6b7280" stroke-width="2" marker-end="url(#arv)"/>
+    <rect x="376" y="200" width="145" height="92" rx="10" fill="url(#gv1)" filter="url(#shv)"/>
+    <text x="448" y="230" text-anchor="middle" fill="white" font-size="18">🔍</text>
+    <text x="448" y="249" text-anchor="middle" fill="white" font-size="11" font-weight="600">Recherche</text>
+    <text x="448" y="265" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">Top-K cosinus</text>
+    <line x1="523" y1="246" x2="552" y2="246" stroke="#6b7280" stroke-width="2" marker-end="url(#arv)"/>
+    <!-- Arrow from pgvector down to search -->
+    <line x1="627" y1="170" x2="490" y2="198" stroke="#4b5563" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <rect x="555" y="200" width="145" height="92" rx="10" fill="url(#gv5)" filter="url(#shv)"/>
+    <text x="627" y="230" text-anchor="middle" fill="white" font-size="18">🤖</text>
+    <text x="627" y="249" text-anchor="middle" fill="white" font-size="11" font-weight="600">LLM + Prompt</text>
+    <text x="627" y="265" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">contexte + question</text>
+    <text x="627" y="282" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">temp=0.1</text>
+    <line x1="702" y1="246" x2="731" y2="246" stroke="#6b7280" stroke-width="2" marker-end="url(#arv)"/>
+    <rect x="734" y="200" width="155" height="92" rx="10" fill="url(#gv3)" filter="url(#shv)"/>
+    <text x="811" y="230" text-anchor="middle" fill="white" font-size="18">✅</text>
+    <text x="811" y="249" text-anchor="middle" fill="white" font-size="11" font-weight="600">Réponse + Citations</text>
+    <text x="811" y="265" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">doc · page · extrait</text>
+    <text x="811" y="282" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">100% traçable</text>
+  </svg>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 7 — CHUNKING INTERACTIF -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s7">
+  <h2 class="slide-title">Le <span class="gradient-text">Chunking</span> — 40% des problèmes RAG</h2>
+  <p class="slide-sub">Le mauvais découpage est la première cause d'échec d'un système RAG</p>
+  <div class="grid-2" style="gap:22px;align-items:start;">
+    <div class="flex-col">
+      <div class="card" style="border-left:3px solid var(--red);">
+        <div style="font-weight:600;color:#fca5a5;margin-bottom:7px;">⚠️ Le problème : similarité ≠ pertinence</div>
+        <p style="font-size:.87rem;color:var(--muted);line-height:1.6;">Question sur <strong style="color:var(--text);">«&nbsp;politique de conservation des données&nbsp;»</strong> → le RAG naïf retourne des résultats sur les <strong style="color:var(--text);">«&nbsp;programmes de fidélisation&nbsp;»</strong> car le mot «&nbsp;conservation&nbsp;» est partagé.</p>
+      </div>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:8px;">📐 Stratégies par type de document</div>
+        <table style="width:100%;font-size:.8rem;border-collapse:collapse;">
+          <tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:5px 0;color:var(--muted);">Type</th><th style="text-align:center;color:var(--muted);">Taille</th><th style="text-align:center;color:var(--muted);">Overlap</th></tr>
+          <tr><td style="padding:5px 0;">Documentation technique</td><td style="text-align:center;">300–500</td><td style="text-align:center;color:#34d399;">20%</td></tr>
+          <tr><td style="padding:5px 0;">Documents juridiques</td><td style="text-align:center;">400–600</td><td style="text-align:center;color:#34d399;">25%</td></tr>
+          <tr><td style="padding:5px 0;">FAQ / Q&amp;A</td><td style="text-align:center;" colspan="2" style="color:var(--muted);">pas de chunking</td></tr>
+          <tr><td style="padding:5px 0;">Code source</td><td style="text-align:center;" colspan="2">fonctions entières</td></tr>
+        </table>
+      </div>
+      <div class="card-hi" style="font-size:.85rem;line-height:1.65;">
+        💡 <strong>Comment ça marche :</strong> après chaque chunk, le curseur avance de <code style="font-size:.8em;background:rgba(255,255,255,.06);padding:1px 5px;border-radius:3px;">size − overlap</code> au lieu de <code style="font-size:.8em;background:rgba(255,255,255,.06);padding:1px 5px;border-radius:3px;">size</code>.<br/>
+        <div class="code-block" style="margin-top:8px;padding:8px 12px;font-size:.76rem;">pos += size − overlap<span class="cmt">&nbsp;&nbsp;// 800 − 100 = 700</span></div>
+        Règle empirique : <strong>10–25%</strong> de la taille du chunk selon le type de document.
+      </div>
+      <div class="card" style="border-left:3px solid var(--orange);font-size:.84rem;line-height:1.6;">
+        <div style="font-weight:600;color:#fcd34d;margin-bottom:7px;">⚠️ Les deux erreurs classiques</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div><span class="badge b-red" style="margin-right:6px;">Trop petit &lt; 5%</span>phrases coupées non récupérées — réponse tronquée malgré l'info présente</div>
+          <div><span class="badge b-orange" style="margin-right:6px;">Trop grand &gt; 30%</span>doublons en top-K — signal dilué, tokens gaspillés</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p style="font-size:.82rem;color:var(--muted);margin-bottom:8px;">Taille du chunk :</p>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <button class="btn btn-secondary" id="ck-200" style="font-size:.8rem;padding:6px 13px;" onclick="setChunk(200)">200 chars</button>
+        <button class="btn btn-secondary" id="ck-500" style="font-size:.8rem;padding:6px 13px;" onclick="setChunk(500)">500 chars</button>
+        <button class="btn btn-secondary" id="ck-800" style="font-size:.8rem;padding:6px 13px;background:var(--purple);border-color:var(--purple);color:white;" onclick="setChunk(800)">800 chars (actuel)</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);cursor:pointer;">
+          <input type="checkbox" id="ck-overlap" onchange="setChunk(currentChunk)" style="cursor:pointer;"/> Afficher l'overlap
+        </label>
+      </div>
+      <div id="chunk-display" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.84rem;line-height:1.85;max-height:220px;overflow-y:auto;" class="chunk-text"></div>
+      <div style="display:flex;gap:16px;margin-top:8px;font-size:.8rem;color:var(--muted);flex-wrap:wrap;">
+        <span>Chunks : <strong id="chunk-count" style="color:var(--text);">-</strong></span>
+        <span>Taille : <strong id="chunk-size-display" style="color:var(--text);">800</strong> chars</span>
+        <span>Overlap : <strong id="chunk-ratio-display" style="color:var(--orange);">12.5%</strong> (<strong id="chunk-overlap-display" style="color:var(--text);">100</strong> chars)</span>
+        <span style="color:#34d399;">🟣 pair &nbsp; 🔵 impair</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 8 — STRATÉGIES AVANCÉES -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s8">
+  <h2 class="slide-title">Stratégies de <span class="gradient-text">récupération avancées</span></h2>
+  <p class="slide-sub">Selon la complexité de la question, différentes stratégies s'appliquent</p>
+  <div class="strat-tabs">
+    <button class="strat-tab active" onclick="setStrat('direct')">⚡ Direct</button>
+    <button class="strat-tab" onclick="setStrat('hyde')">💡 HyDE</button>
+    <button class="strat-tab" onclick="setStrat('fusion')">🔀 RAG-Fusion</button>
+    <button class="strat-tab" onclick="setStrat('adaptive')">🧠 Adaptive</button>
+  </div>
+
+  <div id="sp-direct" class="strat-panel active">
+    <div class="flex-col">
+      <div class="card" style="border-left:3px solid var(--cyan);"><div style="font-weight:600;margin-bottom:5px;">⚡ Stratégie Direct</div><p style="font-size:.87rem;color:var(--muted);line-height:1.6;">La plus simple. La question est directement transformée en vecteur et on recherche les chunks les plus proches.</p></div>
+      <div class="card"><div style="font-size:.83rem;line-height:1.7;"><div><strong>Quand :</strong> <span style="color:var(--muted);">Questions courtes et factuelles</span></div><div><strong>Exemple :</strong> <em style="color:var(--cyan-2);">"Quelle est la date de la réunion X ?"</em></div><div><strong>Avantage :</strong> <span style="color:var(--muted);">rapide, déterministe</span></div><div><strong>Limite :</strong> <span style="color:#fca5a5;">fragile sur questions complexes</span></div></div></div>
+    </div>
+    <svg viewBox="0 0 480 120" style="width:100%;">
+      <defs>
+        <linearGradient id="gsd1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient>
+        <linearGradient id="gsd2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+        <linearGradient id="gsd3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+        <filter id="shsd"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="rgba(0,0,0,.35)"/></filter>
+        <marker id="arsd" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#6b7280"/></marker>
+      </defs>
+      <rect x="5" y="20" width="120" height="80" rx="10" fill="url(#gsd1)" filter="url(#shsd)"/>
+      <text x="65" y="50" text-anchor="middle" fill="white" font-size="16">❓</text>
+      <text x="65" y="68" text-anchor="middle" fill="white" font-size="11" font-weight="600">Question</text>
+      <text x="65" y="86" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">embed direct</text>
+      <line x1="127" y1="60" x2="155" y2="60" stroke="#6b7280" stroke-width="2" marker-end="url(#arsd)"/>
+      <rect x="158" y="20" width="140" height="80" rx="10" fill="url(#gsd2)" filter="url(#shsd)"/>
+      <text x="228" y="50" text-anchor="middle" fill="white" font-size="16">🔍</text>
+      <text x="228" y="68" text-anchor="middle" fill="white" font-size="11" font-weight="600">pgvector</text>
+      <text x="228" y="86" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">cosine Top-10</text>
+      <line x1="300" y1="60" x2="328" y2="60" stroke="#6b7280" stroke-width="2" marker-end="url(#arsd)"/>
+      <rect x="331" y="20" width="144" height="80" rx="10" fill="url(#gsd3)" filter="url(#shsd)"/>
+      <text x="403" y="50" text-anchor="middle" fill="white" font-size="16">✅</text>
+      <text x="403" y="68" text-anchor="middle" fill="white" font-size="11" font-weight="600">Réponse</text>
+      <text x="403" y="86" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="9">+ citations</text>
+    </svg>
+  </div>
+
+  <div id="sp-hyde" class="strat-panel">
+    <div class="flex-col">
+      <div class="card" style="border-left:3px solid var(--purple);"><div style="font-weight:600;margin-bottom:5px;">💡 HyDE — Hypothetical Document Embedding</div><p style="font-size:.87rem;color:var(--muted);line-height:1.6;">Le LLM génère d'abord un <strong style="color:var(--text);">document hypothétique</strong> qui ressemble à la réponse attendue. L'embedding de ce doc — plutôt que de la question — est bien plus proche des vrais chunks.</p></div>
+      <div class="card"><div style="font-size:.83rem;line-height:1.7;"><div><strong>Quand :</strong> <span style="color:var(--muted);">questions ouvertes, complexes, inférences</span></div><div><strong>Exemple :</strong> <em style="color:var(--purple-2);">"Expliquez les principes du GBCP"</em></div><div><strong>Avantage :</strong> <span style="color:var(--muted);">vecteur de recherche sémantiquement plus riche</span></div></div></div>
+    </div>
+    <svg viewBox="0 0 520 200" style="width:100%;">
+      <defs>
+        <linearGradient id="gsh1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient>
+        <linearGradient id="gsh2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient>
+        <linearGradient id="gsh3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#0284c7"/></linearGradient>
+        <linearGradient id="gsh4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+        <linearGradient id="gsh5" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+        <filter id="shsh"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="rgba(0,0,0,.35)"/></filter>
+        <marker id="arsh" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#6b7280"/></marker>
+      </defs>
+      <rect x="5" y="60" width="90" height="72" rx="9" fill="url(#gsh1)" filter="url(#shsh)"/>
+      <text x="50" y="84" text-anchor="middle" fill="white" font-size="14">❓</text>
+      <text x="50" y="100" text-anchor="middle" fill="white" font-size="10" font-weight="600">Question</text>
+      <text x="50" y="124" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">ouverte</text>
+      <line x1="97" y1="96" x2="118" y2="96" stroke="#6b7280" stroke-width="2" marker-end="url(#arsh)"/>
+      <rect x="121" y="60" width="110" height="72" rx="9" fill="url(#gsh2)" filter="url(#shsh)"/>
+      <text x="176" y="84" text-anchor="middle" fill="white" font-size="14">🤖</text>
+      <text x="176" y="100" text-anchor="middle" fill="white" font-size="10" font-weight="600">Doc hypothétique</text>
+      <text x="176" y="124" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">"À quoi ressemble la réponse ?"</text>
+      <line x1="233" y1="96" x2="254" y2="96" stroke="#6b7280" stroke-width="2" marker-end="url(#arsh)"/>
+      <rect x="257" y="60" width="95" height="72" rx="9" fill="url(#gsh3)" filter="url(#shsh)"/>
+      <text x="304" y="84" text-anchor="middle" fill="white" font-size="14">🔢</text>
+      <text x="304" y="100" text-anchor="middle" fill="white" font-size="10" font-weight="600">Embed Doc</text>
+      <text x="304" y="124" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">meilleur vecteur</text>
+      <line x1="354" y1="96" x2="375" y2="96" stroke="#6b7280" stroke-width="2" marker-end="url(#arsh)"/>
+      <rect x="378" y="60" width="90" height="72" rx="9" fill="url(#gsh4)" filter="url(#shsh)"/>
+      <text x="423" y="84" text-anchor="middle" fill="white" font-size="14">🔍</text>
+      <text x="423" y="100" text-anchor="middle" fill="white" font-size="10" font-weight="600">pgvector</text>
+      <text x="423" y="124" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8.5">Top-K</text>
+      <line x1="470" y1="96" x2="491" y2="96" stroke="#6b7280" stroke-width="2" marker-end="url(#arsh)"/>
+      <rect x="493" y="60" width="22" height="72" rx="6" fill="url(#gsh5)" filter="url(#shsh)"/>
+      <text x="504" y="88" text-anchor="middle" fill="white" font-size="10">✅</text>
+      <text x="504" y="104" text-anchor="middle" fill="white" font-size="7">Rép.</text>
+    </svg>
+  </div>
+
+  <div id="sp-fusion" class="strat-panel">
+    <div class="flex-col">
+      <div class="card" style="border-left:3px solid var(--blue);"><div style="font-weight:600;margin-bottom:5px;">🔀 RAG-Fusion — Multi-Query + RRF</div><p style="font-size:.87rem;color:var(--muted);line-height:1.6;">Le LLM génère 3 reformulations de la question. Chaque reformulation fait une recherche séparée. Les résultats sont fusionnés par <strong style="color:var(--text);">RRF (Reciprocal Rank Fusion)</strong> : <code style="font-size:.8em;">score = Σ 1/(k+rang)</code></p></div>
+      <div class="card"><div style="font-size:.83rem;line-height:1.7;"><div><strong>Quand :</strong> <span style="color:var(--muted);">comparaisons, multi-aspects, synthèse</span></div><div><strong>Exemple :</strong> <em style="color:#60a5fa;">"Comparez le GBCP et le Code des marchés"</em></div><div><strong>Avantage :</strong> <span style="color:var(--muted);">couverture maximale, réduit les angles morts</span></div></div></div>
+    </div>
+    <svg viewBox="0 0 500 200" style="width:100%;">
+      <defs>
+        <linearGradient id="gsf1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient>
+        <linearGradient id="gsf2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+        <linearGradient id="gsf3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient>
+        <linearGradient id="gsf4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+        <filter id="shsf"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="rgba(0,0,0,.35)"/></filter>
+        <marker id="arsf" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#6b7280"/></marker>
+      </defs>
+      <rect x="5" y="75" width="85" height="55" rx="9" fill="url(#gsf1)" filter="url(#shsf)"/>
+      <text x="47" y="97" text-anchor="middle" fill="white" font-size="13">❓</text>
+      <text x="47" y="113" text-anchor="middle" fill="white" font-size="9.5" font-weight="600">Question</text>
+      <text x="47" y="127" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="8">+ 3 reformulations</text>
+      <line x1="92" y1="103" x2="110" y2="53" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsf)"/>
+      <line x1="92" y1="103" x2="110" y2="103" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsf)"/>
+      <line x1="92" y1="103" x2="110" y2="153" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsf)"/>
+      <rect x="113" y="28" width="75" height="46" rx="7" fill="url(#gsf2)" filter="url(#shsf)"/>
+      <text x="150" y="46" text-anchor="middle" fill="white" font-size="11">🔍</text>
+      <text x="150" y="62" text-anchor="middle" fill="white" font-size="8.5" font-weight="600">Search Q1</text>
+      <rect x="113" y="80" width="75" height="46" rx="7" fill="url(#gsf2)" filter="url(#shsf)"/>
+      <text x="150" y="98" text-anchor="middle" fill="white" font-size="11">🔍</text>
+      <text x="150" y="114" text-anchor="middle" fill="white" font-size="8.5" font-weight="600">Search Q2</text>
+      <rect x="113" y="132" width="75" height="46" rx="7" fill="url(#gsf2)" filter="url(#shsf)"/>
+      <text x="150" y="150" text-anchor="middle" fill="white" font-size="11">🔍</text>
+      <text x="150" y="166" text-anchor="middle" fill="white" font-size="8.5" font-weight="600">Search Q3</text>
+      <line x1="190" y1="51" x2="215" y2="98" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsf)"/>
+      <line x1="190" y1="103" x2="215" y2="103" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsf)"/>
+      <line x1="190" y1="155" x2="215" y2="108" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsf)"/>
+      <rect x="218" y="78" width="95" height="50" rx="9" fill="url(#gsf3)" filter="url(#shsf)"/>
+      <text x="265" y="98" text-anchor="middle" fill="white" font-size="11">⚖️</text>
+      <text x="265" y="112" text-anchor="middle" fill="white" font-size="9" font-weight="600">RRF Fusion</text>
+      <text x="265" y="124" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="7.5">Σ 1/(k+rang)</text>
+      <line x1="315" y1="103" x2="340" y2="103" stroke="#6b7280" stroke-width="2" marker-end="url(#arsf)"/>
+      <rect x="343" y="78" width="145" height="50" rx="9" fill="url(#gsf4)" filter="url(#shsf)"/>
+      <text x="415" y="98" text-anchor="middle" fill="white" font-size="11">✅</text>
+      <text x="415" y="112" text-anchor="middle" fill="white" font-size="9" font-weight="600">Réponse fusionnée</text>
+      <text x="415" y="124" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="7.5">meilleure couverture</text>
+    </svg>
+  </div>
+
+  <div id="sp-adaptive" class="strat-panel">
+    <div class="flex-col">
+      <div class="card" style="border-left:3px solid var(--green);"><div style="font-weight:600;margin-bottom:5px;">🧠 Adaptive — Routeur intelligent</div><p style="font-size:.87rem;color:var(--muted);line-height:1.6;">Le LLM analyse la question et choisit automatiquement la stratégie optimale. C'est le mode par défaut en production — transparent pour l'utilisateur.</p></div>
+      <div class="card code-block" style="font-size:.76rem;">
+<span class="cmt">// AdaptiveQueryRouter.cs</span>
+<span class="kw">if</span> (raw.Contains(<span class="str">"HyDE"</span>))   <span class="kw">return</span> <span class="cls">RagStrategy</span>.HyDE;
+<span class="kw">if</span> (raw.Contains(<span class="str">"Fusion"</span>)) <span class="kw">return</span> <span class="cls">RagStrategy</span>.Fusion;
+<span class="kw">return</span> <span class="cls">RagStrategy</span>.Direct; <span class="cmt">// fallback sécurisé</span></div>
+    </div>
+    <svg viewBox="0 0 460 200" style="width:100%;">
+      <defs>
+        <linearGradient id="gsa1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient>
+        <linearGradient id="gsa2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+        <linearGradient id="gsa3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#0284c7"/></linearGradient>
+        <linearGradient id="gsa4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient>
+        <linearGradient id="gsa5" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+        <filter id="shsa"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="rgba(0,0,0,.35)"/></filter>
+        <marker id="arsa" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#6b7280"/></marker>
+      </defs>
+      <rect x="5" y="75" width="85" height="55" rx="9" fill="url(#gsa1)" filter="url(#shsa)"/>
+      <text x="47" y="97" text-anchor="middle" fill="white" font-size="13">❓</text>
+      <text x="47" y="113" text-anchor="middle" fill="white" font-size="9.5" font-weight="600">Question</text>
+      <line x1="92" y1="103" x2="115" y2="103" stroke="#6b7280" stroke-width="2" marker-end="url(#arsa)"/>
+      <rect x="118" y="75" width="100" height="55" rx="9" fill="url(#gsa2)" filter="url(#shsa)"/>
+      <text x="168" y="97" text-anchor="middle" fill="white" font-size="13">🧠</text>
+      <text x="168" y="112" text-anchor="middle" fill="white" font-size="9" font-weight="600">Adaptive Router</text>
+      <text x="168" y="125" text-anchor="middle" fill="rgba(255,255,255,.65)" font-size="7.5">LLM classifie</text>
+      <line x1="220" y1="90" x2="248" y2="38" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsa)"/>
+      <text x="228" y="68" fill="#94a3b8" font-size="8">factuel</text>
+      <line x1="220" y1="103" x2="248" y2="103" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsa)"/>
+      <text x="228" y="99" fill="#94a3b8" font-size="8">complexe</text>
+      <line x1="220" y1="116" x2="248" y2="168" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsa)"/>
+      <text x="226" y="143" fill="#94a3b8" font-size="8">multi-aspects</text>
+      <rect x="251" y="13" width="80" height="45" rx="8" fill="url(#gsa3)" filter="url(#shsa)"/>
+      <text x="291" y="33" text-anchor="middle" fill="white" font-size="11">⚡</text>
+      <text x="291" y="48" text-anchor="middle" fill="white" font-size="8.5" font-weight="600">Direct</text>
+      <rect x="251" y="80" width="80" height="45" rx="8" fill="url(#gsa4)" filter="url(#shsa)"/>
+      <text x="291" y="100" text-anchor="middle" fill="white" font-size="11">💡</text>
+      <text x="291" y="115" text-anchor="middle" fill="white" font-size="8.5" font-weight="600">HyDE</text>
+      <rect x="251" y="147" width="80" height="45" rx="8" fill="url(#gsa5)" filter="url(#shsa)"/>
+      <text x="291" y="167" text-anchor="middle" fill="white" font-size="11">🔀</text>
+      <text x="291" y="182" text-anchor="middle" fill="white" font-size="8.5" font-weight="600">Fusion</text>
+      <line x1="333" y1="35" x2="370" y2="100" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsa)"/>
+      <line x1="333" y1="103" x2="370" y2="103" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsa)"/>
+      <line x1="333" y1="170" x2="370" y2="106" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arsa)"/>
+      <rect x="373" y="78" width="82" height="50" rx="8" fill="url(#gsa2)" filter="url(#shsa)"/>
+      <text x="414" y="98" text-anchor="middle" fill="white" font-size="13">✅</text>
+      <text x="414" y="114" text-anchor="middle" fill="white" font-size="9" font-weight="600">Réponse</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 9 — RERANKING & COMPRESSION -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s9">
+  <h2 class="slide-title"><span class="gradient-text">Reranking</span> & Compression</h2>
+  <p class="slide-sub">Réduire le bruit progressivement — qualité > quantité</p>
+  <div class="grid-2" style="gap:22px;align-items:start;">
+    <div class="flex-col">
+      <div class="card-hi" style="font-size:.87rem;line-height:1.65;">⚠️ <strong>Attention au "Context Stuffing" :</strong> injecter 20 chunks "au cas où" quand seuls 3 sont pertinents <em>dilue le signal</em>. Le LLM ne trie pas — il <strong>moyenne</strong> tout. <span style="color:#fca5a5;">Plus de chunks ≠ meilleure réponse.</span></div>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:10px;">Pipeline de réduction</div>
+        <div id="funnel-stages"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px;">
+        <button id="rk-btn" class="btn btn-step" onclick="rkNext()">Étape suivante →</button>
+        <button class="btn btn-ghost" style="font-size:.8rem;padding:6px 12px;" onclick="rkReset()">↺</button>
+      </div>
+    </div>
+    <div>
+      <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px;">Visualisation du pipeline :</p>
+      <div id="rk-viz" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;min-height:260px;"></div>
+      <div id="rk-desc" class="step-desc" style="margin-top:8px;color:var(--muted);font-style:italic;">Cliquez "Étape suivante" pour animer le pipeline…</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 10 — IMPLÉMENTATION .NET -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s10">
+  <h2 class="slide-title">Notre implémentation — <span class="gradient-text">.NET 10</span></h2>
+  <p class="slide-sub">Clean Architecture + Microsoft.Extensions.AI + pgvector</p>
+  <div class="grid-2" style="gap:22px;align-items:start;">
+    <div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px;font-weight:500;">Architecture en 4 couches :</div>
+      <div class="arch-layer" style="background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.2);">
+        <span class="arch-layer-label" style="color:var(--purple-2);">🌐 Web.Api</span>
+        <span class="arch-layer-desc">Controllers · DTOs · Minimal API · CORS</span>
+      </div>
+      <div style="text-align:center;font-size:.7rem;color:var(--faint);margin:2px 0;">↕ référence</div>
+      <div class="arch-layer" style="background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.2);">
+        <span class="arch-layer-label" style="color:var(--cyan-2);">⚙️ Application</span>
+        <span class="arch-layer-desc">CQRS MediatR · Handlers · Validators · FluentValidation</span>
+      </div>
+      <div style="text-align:center;font-size:.7rem;color:var(--faint);margin:2px 0;">↕ référence</div>
+      <div class="arch-layer" style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);">
+        <span class="arch-layer-label" style="color:#60a5fa;">🔧 Infrastructure</span>
+        <span class="arch-layer-desc">RAG Pipeline · pgvector · Embeddings · Whisper</span>
+      </div>
+      <div style="text-align:center;font-size:.7rem;color:var(--faint);margin:2px 0;">↕ référence (interfaces)</div>
+      <div class="arch-layer" style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);">
+        <span class="arch-layer-label" style="color:#34d399;">🏛️ Domain</span>
+        <span class="arch-layer-desc">Entités · Interfaces · Enums — <strong>zéro dépendance externe</strong></span>
+      </div>
+      <div class="card-hi" style="margin-top:14px;font-size:.84rem;line-height:1.6;">
+        💡 <strong>Abstraction provider IA :</strong> changer de LLM en 2 lignes dans appsettings.json.<br/>
+        <span class="badge b-cyan" style="margin-top:6px;">LM Studio local</span>
+        <span class="badge b-purple" style="margin-top:6px;">Azure OpenAI</span>
+        <span class="badge b-orange" style="margin-top:6px;">GitHub Models</span>
+      </div>
+    </div>
+    <div>
+      <div class="code-tabs" id="code-tabs-10">
+        <button class="code-tab active" onclick="setCode10('cfg')">appsettings.json</button>
+        <button class="code-tab" onclick="setCode10('provider')">Provider Switch</button>
+        <button class="code-tab" onclick="setCode10('sql')">pgvector SQL</button>
+      </div>
+      <div id="cp-cfg" class="code-panel active">
+        <div class="code-block"><span class="cmt">// appsettings.json — changer de provider sans recompiler</span>
+<span class="prop">"AI"</span>: {
+  <span class="prop">"Provider"</span>: <span class="str">"OpenAI"</span>,       <span class="cmt">// AzureOpenAI | GitHubModels</span>
+  <span class="prop">"Endpoint"</span>: <span class="str">"http://localhost:1234/v1"</span>,  <span class="cmt">// LM Studio local</span>
+  <span class="prop">"ChatModel"</span>: <span class="str">"llama-3.2-1b-instruct"</span>,
+  <span class="prop">"EmbeddingModel"</span>: <span class="str">"text-embedding-nomic-embed-text-v1.5"</span>
+},
+<span class="prop">"RagOptions"</span>: {
+  <span class="prop">"DefaultStrategy"</span>: <span class="str">"Adaptive"</span>,
+  <span class="prop">"Retrieval"</span>: { <span class="prop">"TopK"</span>: <span class="num">10</span>, <span class="prop">"ScoreThreshold"</span>: <span class="num">0.3</span> },
+  <span class="prop">"Reranker"</span>: { <span class="prop">"Enabled"</span>: <span class="kw">true</span>, <span class="prop">"TopKAfterRerank"</span>: <span class="num">5</span> }
+}</div>
+      </div>
+      <div id="cp-provider" class="code-panel">
+        <div class="code-block"><span class="cmt">// DependencyInjection.cs — sélection dynamique du provider</span>
+<span class="kw">switch</span> (ai.Provider)
+{
+  <span class="kw">case</span> <span class="cls">AiProvider</span>.AzureOpenAI:
+    builder.AddAzureOpenAIChatCompletion(
+      ai.ChatModel, ai.Endpoint, ai.ApiKey);
+    <span class="kw">break</span>;
+
+  <span class="kw">case</span> <span class="cls">AiProvider</span>.GitHubModels:
+  <span class="kw">case</span> <span class="cls">AiProvider</span>.OpenAI:
+    builder.AddOpenAIChatCompletion(
+      ai.ChatModel,
+      apiKey: ai.ApiKey,
+      endpoint: <span class="kw">new</span> <span class="cls">Uri</span>(ai.Endpoint));
+    <span class="kw">break</span>;
+}
+<span class="cmt">// Le pipeline RAG ne sait pas quel provider tourne.</span>
+<span class="cmt">// Il parle uniquement à IChatClient.</span></div>
+      </div>
+      <div id="cp-sql" class="code-panel">
+        <div class="code-block"><span class="cmt">-- Schéma pgvector — extension cosinus</span>
+<span class="kw">CREATE EXTENSION IF NOT EXISTS</span> vector;
+
+<span class="kw">CREATE TABLE</span> document_chunks (
+  id          UUID <span class="kw">PRIMARY KEY</span>,
+  document_id UUID <span class="kw">REFERENCES</span> documents(id),
+  content     TEXT <span class="kw">NOT NULL</span>,
+  embedding   vector(<span class="num">768</span>),   <span class="cmt">-- nomic-embed-text</span>
+  chunk_index INT,
+  page_number INT
+);
+
+<span class="cmt">-- Index HNSW : O(log n) vs O(n)</span>
+<span class="kw">CREATE INDEX ON</span> document_chunks
+  <span class="kw">USING</span> hnsw (embedding vector_cosine_ops)
+  <span class="kw">WITH</span> (m = <span class="num">16</span>, ef_construction = <span class="num">64</span>);
+
+<span class="cmt">-- Recherche Top-K par similarité cosinus</span>
+<span class="kw">SELECT</span> content, <span class="num">1</span>-(embedding <=> $<span class="num">1</span>::vector) <span class="kw">AS</span> score
+<span class="kw">FROM</span> document_chunks
+<span class="kw">ORDER BY</span> score <span class="kw">DESC LIMIT</span> <span class="num">10</span>;</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 10b — VIDÉO & AUDIO (STEP 3) -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s10b">
+  <h2 class="slide-title">Extension Step 3 — <span class="gradient-text">Ingestion Vidéo & Audio</span></h2>
+  <p class="slide-sub">100% local, zéro cloud — une vidéo devient un document RAG comme n'importe quel PDF</p>
+  <svg viewBox="0 0 860 130" style="width:100%;max-height:135px;margin-bottom:14px;">
+    <defs>
+      <linearGradient id="gvid0" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#6d28d9"/></linearGradient>
+      <linearGradient id="gvid1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+      <linearGradient id="gvid2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#0284c7"/></linearGradient>
+      <linearGradient id="gvid3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient>
+      <linearGradient id="gvid4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+      <filter id="shvid"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="rgba(0,0,0,.4)"/></filter>
+      <marker id="arvid" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#6b7280"/></marker>
+    </defs>
+    <rect x="5" y="10" width="155" height="110" rx="11" fill="url(#gvid0)" filter="url(#shvid)"/>
+    <text x="82" y="42" text-anchor="middle" fill="white" font-size="22">🎥</text>
+    <text x="82" y="65" text-anchor="middle" fill="white" font-size="12" font-weight="700">Vidéo / Audio</text>
+    <text x="82" y="83" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="9.5">MP4 · MKV · WebM</text>
+    <text x="82" y="99" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="9.5">WAV · MP3 · M4A</text>
+    <text x="82" y="113" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="8.5">VideoTextExtractor</text>
+    <line x1="162" y1="65" x2="192" y2="65" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arvid)"/>
+    <rect x="195" y="10" width="155" height="110" rx="11" fill="url(#gvid1)" filter="url(#shvid)"/>
+    <text x="272" y="42" text-anchor="middle" fill="white" font-size="22">🔊</text>
+    <text x="272" y="65" text-anchor="middle" fill="white" font-size="12" font-weight="700">FFmpeg</text>
+    <text x="272" y="83" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="9.5">Extraction audio</text>
+    <text x="272" y="99" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="9.5">WAV 16kHz mono</text>
+    <text x="272" y="113" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="8.5">FFmpegVideoProcessor</text>
+    <line x1="352" y1="65" x2="382" y2="65" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arvid)"/>
+    <rect x="385" y="10" width="155" height="110" rx="11" fill="url(#gvid2)" filter="url(#shvid)"/>
+    <text x="462" y="42" text-anchor="middle" fill="white" font-size="22">📝</text>
+    <text x="462" y="65" text-anchor="middle" fill="white" font-size="12" font-weight="700">Whisper (local)</text>
+    <text x="462" y="83" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="9.5">ggml-medium.bin</text>
+    <text x="462" y="99" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="9.5">4 threads CPU</text>
+    <text x="462" y="113" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="8.5">+timestamps HH:MM:SS</text>
+    <line x1="542" y1="65" x2="572" y2="65" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arvid)"/>
+    <rect x="575" y="10" width="130" height="110" rx="11" fill="url(#gvid3)" filter="url(#shvid)"/>
+    <text x="640" y="42" text-anchor="middle" fill="white" font-size="22">✂️</text>
+    <text x="640" y="65" text-anchor="middle" fill="white" font-size="12" font-weight="700">Chunking</text>
+    <text x="640" y="83" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="9.5">texte transcrit</text>
+    <text x="640" y="99" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="9.5">800 chars / 100 ov.</text>
+    <line x1="707" y1="65" x2="737" y2="65" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arvid)"/>
+    <rect x="740" y="10" width="115" height="110" rx="11" fill="url(#gvid4)" filter="url(#shvid)"/>
+    <text x="797" y="42" text-anchor="middle" fill="white" font-size="22">🗄️</text>
+    <text x="797" y="65" text-anchor="middle" fill="white" font-size="12" font-weight="700">pgvector</text>
+    <text x="797" y="83" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="9.5">comme un PDF</text>
+    <text x="797" y="99" text-anchor="middle" fill="rgba(255,255,255,.78)" font-size="9.5">RAG natif</text>
+  </svg>
+  <div class="grid-2" style="gap:18px;">
+    <div class="flex-col">
+      <div class="card-hi"><div style="font-size:.88rem;line-height:1.7;">🔒 <strong>100% hors ligne :</strong> Whisper tourne en local (ggml-medium.bin), FFmpeg est une CLI locale. Zéro envoi vers OpenAI ou tout autre cloud. <span class="badge b-green" style="margin-left:4px;">Données confidentielles ✓</span></div></div>
+      <div class="card"><div style="font-weight:600;margin-bottom:8px;">Formats supportés</div><div style="display:flex;gap:6px;flex-wrap:wrap;"><span class="badge b-purple">MP4</span><span class="badge b-purple">MKV</span><span class="badge b-purple">WebM</span><span class="badge b-purple">AVI</span><span class="badge b-purple">MOV</span><span class="badge b-cyan">WAV</span><span class="badge b-cyan">MP3</span><span class="badge b-cyan">M4A</span><span class="badge b-cyan">OGG</span><span class="badge b-cyan">FLAC</span></div></div>
+    </div>
+    <div>
+      <div class="code-block" style="font-size:.76rem;"><span class="cmt">// VideoTextExtractor.cs</span>
+<span class="kw">public async</span> Task&lt;<span class="cls">string</span>&gt; ExtractTextAsync(<span class="cls">string</span> filePath, ...)
+{
+  <span class="kw">var</span> isVideo = SupportedVideoExtensions.Contains(ext);
+  <span class="cls">string</span> audioPath;
+
+  <span class="kw">if</span> (isVideo)
+    <span class="cmt">// Extraire la piste audio → WAV temp</span>
+    audioPath = <span class="kw">await</span> _videoProcessor
+      .ExtractAudioAsync(filePath, tempAudio, ct);
+  <span class="kw">else</span>
+    audioPath = filePath; <span class="cmt">// audio direct</span>
+
+  <span class="kw">var</span> result = <span class="kw">await</span> _transcriptionService
+    .TranscribeAsync(audioPath, <span class="str">"fr"</span>, ct);
+
+  <span class="kw">return</span> result.FullText; <span class="cmt">// [HH:MM:SS → HH:MM:SS] texte</span>
+}</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 13 — DÉMO LIVE : C'EST PARTI ! -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="sdemo-a">
+  <h2 class="slide-title">Démo live — <span class="gradient-text">c'est parti !</span></h2>
+  <p class="slide-sub">Fini la simulation — voyons l'application réelle tourner</p>
+  <div class="grid-2" style="gap:22px;align-items:start;">
+    <div class="flex-col">
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:10px;">✅ Checklist de démarrage</div>
+        <div style="display:flex;flex-direction:column;gap:7px;">
+          <div class="checklist-item" onclick="toggleCheck(this)">
+            <div class="ci-check"></div>
+            <span style="font-size:1.1rem;">🐳</span>
+            <div><strong>PostgreSQL + pgvector</strong><br/><span style="color:var(--muted);font-size:.8rem;">docker-compose up -d</span></div>
+          </div>
+          <div class="checklist-item" onclick="toggleCheck(this)">
+            <div class="ci-check"></div>
+            <span style="font-size:1.1rem;">🤖</span>
+            <div><strong>LM Studio</strong><br/><span style="color:var(--muted);font-size:.8rem;">modèle chargé — port 1234</span></div>
+          </div>
+          <div class="checklist-item" onclick="toggleCheck(this)">
+            <div class="ci-check"></div>
+            <span style="font-size:1.1rem;">🌐</span>
+            <div><strong>API .NET</strong><br/><span style="color:var(--muted);font-size:.8rem;">dotnet run → :50406</span></div>
+          </div>
+          <div class="checklist-item" onclick="toggleCheck(this)">
+            <div class="ci-check"></div>
+            <span style="font-size:1.1rem;">⚛️</span>
+            <div><strong>Front React</strong><br/><span style="color:var(--muted);font-size:.8rem;">npm run dev → :5173</span></div>
+          </div>
+          <div class="checklist-item" onclick="toggleCheck(this)">
+            <div class="ci-check"></div>
+            <span style="font-size:1.1rem;">📄</span>
+            <div><strong>Document PDF prêt</strong><br/><span style="color:var(--muted);font-size:.8rem;">à uploader via l'interface</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-hi" style="font-size:.87rem;line-height:1.7;">
+        <div style="font-weight:600;margin-bottom:8px;">📋 Scénario de la démo</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;gap:9px;align-items:flex-start;"><span style="background:var(--purple);color:white;border-radius:50%;width:21px;height:21px;display:inline-flex;align-items:center;justify-content:center;font-size:.72rem;flex-shrink:0;font-weight:700;">1</span><span><strong>Uploader un PDF</strong> via l'interface React</span></div>
+          <div style="display:flex;gap:9px;align-items:flex-start;"><span style="background:var(--cyan);color:white;border-radius:50%;width:21px;height:21px;display:inline-flex;align-items:center;justify-content:center;font-size:.72rem;flex-shrink:0;font-weight:700;">2</span><span><strong>Poser une question</strong> sur son contenu dans le chat</span></div>
+          <div style="display:flex;gap:9px;align-items:flex-start;"><span style="background:var(--green);color:white;border-radius:50%;width:21px;height:21px;display:inline-flex;align-items:center;justify-content:center;font-size:.72rem;flex-shrink:0;font-weight:700;">3</span><span>Observer la <strong>réponse sourcée</strong> avec citations de pages</span></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <!-- Maquette de l'interface React en SVG -->
+      <svg viewBox="0 0 460 330" style="width:100%;border-radius:12px;border:1px solid rgba(255,255,255,.09);">
+        <defs>
+          <linearGradient id="gdma-bar" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#06b6d4"/></linearGradient>
+          <linearGradient id="gdma-btn" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient>
+          <filter id="sh-dma"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="rgba(0,0,0,.5)"/></filter>
+        </defs>
+        <!-- Fond de l'app -->
+        <rect width="460" height="330" fill="#0b0f1a" rx="10"/>
+        <!-- Barre de navigation -->
+        <rect width="460" height="40" fill="#141927" rx="10"/>
+        <rect y="10" width="460" height="30" fill="#141927"/>
+        <rect x="0" y="40" width="460" height="1" fill="rgba(255,255,255,.07)"/>
+        <circle cx="18" cy="20" r="5" fill="#ef4444" opacity=".7"/>
+        <circle cx="32" cy="20" r="5" fill="#f59e0b" opacity=".7"/>
+        <circle cx="46" cy="20" r="5" fill="#10b981" opacity=".7"/>
+        <text x="230" y="25" text-anchor="middle" fill="white" font-size="12.5" font-weight="600" font-family="Inter,sans-serif">AIExperience</text>
+        <rect x="338" y="11" width="64" height="18" rx="5" fill="rgba(124,58,237,.25)" stroke="rgba(124,58,237,.45)" stroke-width="1"/>
+        <text x="370" y="24" text-anchor="middle" fill="#c4b5fd" font-size="9" font-family="Inter,sans-serif">Documents</text>
+        <rect x="410" y="11" width="42" height="18" rx="5" fill="rgba(6,182,212,.15)" stroke="rgba(6,182,212,.3)" stroke-width="1"/>
+        <text x="431" y="24" text-anchor="middle" fill="#38d1e8" font-size="9" font-family="Inter,sans-serif">Chat</text>
+        <!-- Sidebar gauche -->
+        <rect x="0" y="41" width="148" height="289" fill="#0e1422"/>
+        <rect x="148" y="41" width="1" height="289" fill="rgba(255,255,255,.07)"/>
+        <text x="12" y="60" fill="#475569" font-size="9" font-weight="600" font-family="Inter,sans-serif">MES DOCUMENTS</text>
+        <!-- Zone de drop pour upload -->
+        <rect x="9" y="66" width="130" height="42" rx="8" fill="rgba(124,58,237,.08)" stroke="rgba(124,58,237,.3)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="74" y="83" text-anchor="middle" fill="#a78bfa" font-size="11" font-family="Inter,sans-serif">+ Uploader</text>
+        <text x="74" y="97" text-anchor="middle" fill="#475569" font-size="8.5" font-family="Inter,sans-serif">PDF · MP4 · MP3</text>
+        <!-- Document indexé -->
+        <rect x="9" y="115" width="130" height="36" rx="7" fill="rgba(16,185,129,.08)" stroke="rgba(16,185,129,.22)" stroke-width="1"/>
+        <text x="20" y="129" fill="#34d399" font-size="11" font-family="Inter,sans-serif">📄</text>
+        <text x="35" y="129" fill="#e2e8f0" font-size="9" font-family="Inter,sans-serif">Politique RH.pdf</text>
+        <text x="35" y="143" fill="#475569" font-size="7.5" font-family="Inter,sans-serif">42 chunks · ✓ indexé</text>
+        <!-- Document second -->
+        <rect x="9" y="158" width="130" height="30" rx="7" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
+        <text x="20" y="171" fill="#94a3b8" font-size="11" font-family="Inter,sans-serif">📄</text>
+        <text x="35" y="171" fill="#94a3b8" font-size="9" font-family="Inter,sans-serif">Contrat-type.pdf</text>
+        <text x="35" y="181" fill="#475569" font-size="7.5" font-family="Inter,sans-serif">67 chunks</text>
+        <text x="12" y="220" fill="#475569" font-size="8" font-family="Inter,sans-serif">2 docs · 109 chunks</text>
+        <!-- Zone chat principale -->
+        <text x="162" y="60" fill="#e2e8f0" font-size="12" font-weight="600" font-family="Inter,sans-serif">Chat RAG</text>
+        <rect x="374" y="49" width="78" height="18" rx="5" fill="rgba(16,185,129,.12)" stroke="rgba(16,185,129,.25)" stroke-width="1"/>
+        <text x="413" y="62" text-anchor="middle" fill="#34d399" font-size="8.5" font-family="Inter,sans-serif">🧠 Adaptive</text>
+        <rect x="149" y="70" width="311" height="1" fill="rgba(255,255,255,.06)"/>
+        <!-- Bulle utilisateur -->
+        <rect x="264" y="80" width="188" height="36" rx="8" fill="rgba(124,58,237,.18)" stroke="rgba(124,58,237,.28)" stroke-width="1"/>
+        <text x="274" y="95" fill="#e2e8f0" font-size="8.5" font-family="Inter,sans-serif">Quelle est la procédure de</text>
+        <text x="274" y="108" fill="#e2e8f0" font-size="8.5" font-family="Inter,sans-serif">remboursement des frais ?</text>
+        <!-- Réponse RAG -->
+        <rect x="157" y="126" width="295" height="98" rx="8" fill="#141927" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
+        <text x="167" y="143" fill="#94a3b8" font-size="8.5" font-family="Inter,sans-serif">🤖 Assistant RAG</text>
+        <rect x="167" y="149" width="275" height="1" fill="rgba(255,255,255,.05)"/>
+        <text x="167" y="163" fill="#e2e8f0" font-size="8.5" font-family="Inter,sans-serif">Les frais de transport sont remboursés</text>
+        <text x="167" y="176" fill="#e2e8f0" font-size="8.5" font-family="Inter,sans-serif">sur justificatifs dans un délai de 30j.</text>
+        <text x="167" y="189" fill="#e2e8f0" font-size="8.5" font-family="Inter,sans-serif">Train 2ème classe. &gt;200€ : validation...</text>
+        <!-- Badges citations -->
+        <rect x="167" y="198" width="102" height="16" rx="4" fill="rgba(16,185,129,.12)" stroke="rgba(16,185,129,.28)" stroke-width="1"/>
+        <text x="218" y="210" text-anchor="middle" fill="#34d399" font-size="7.5" font-family="Inter,sans-serif">📄 Politique RH — p.3</text>
+        <rect x="276" y="198" width="106" height="16" rx="4" fill="rgba(16,185,129,.12)" stroke="rgba(16,185,129,.28)" stroke-width="1"/>
+        <text x="329" y="210" text-anchor="middle" fill="#34d399" font-size="7.5" font-family="Inter,sans-serif">📄 Guide frais pro — p.7</text>
+        <!-- Barre de saisie -->
+        <rect x="157" y="270" width="295" height="38" rx="8" fill="#141927" stroke="rgba(255,255,255,.09)" stroke-width="1"/>
+        <text x="173" y="294" fill="#475569" font-size="8.5" font-family="Inter,sans-serif">Posez votre question sur les documents...</text>
+        <rect x="421" y="278" width="24" height="24" rx="6" fill="url(#gdma-btn)" filter="url(#sh-dma)"/>
+        <text x="433" y="295" text-anchor="middle" fill="white" font-size="13" font-family="Inter,sans-serif">›</text>
+        <!-- Label URL -->
+        <text x="230" y="321" text-anchor="middle" fill="#1e2638" font-size="8.5" font-family="Inter,sans-serif">localhost:5173 — AIExperience</text>
+      </svg>
+      <p style="font-size:.78rem;color:var(--faint);text-align:center;margin-top:5px;">Aperçu de l'interface React (port 5173)</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 14 — CE QUE VOUS VENEZ DE VOIR -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="sdemo-b">
+  <h2 class="slide-title">Ce que vous venez de <span class="gradient-text">voir</span></h2>
+  <p class="slide-sub">Chaque geste de la démo correspond à une slide vue précédemment</p>
+
+  <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px;">
+
+    <div style="display:grid;grid-template-columns:1fr 32px 1fr;gap:10px;align-items:center;">
+      <div class="card" style="border-left:3px solid var(--purple);padding:12px 15px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;"><span style="font-size:1.3rem;">📤</span><strong style="font-size:.9rem;">Vous avez uploadé un PDF</strong></div>
+        <div style="color:var(--muted);font-size:.8rem;line-height:1.5;">Le fichier a disparu dans l'API — des chunks indexés sont apparus</div>
+      </div>
+      <div style="text-align:center;font-size:1.4rem;color:var(--purple-2);">→</div>
+      <div class="card" style="border-left:3px solid var(--cyan);padding:12px 15px;">
+        <div style="display:flex;gap:6px;margin-bottom:5px;flex-wrap:wrap;"><span class="badge b-purple">Pipeline Ingestion</span><span class="badge b-cyan">Slides 5–6</span></div>
+        <div style="color:var(--muted);font-size:.8rem;line-height:1.5;">Extraction → Chunking (800c / 100 overlap) → Embedding 768d → pgvector HNSW</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 32px 1fr;gap:10px;align-items:center;">
+      <div class="card" style="border-left:3px solid var(--cyan);padding:12px 15px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;"><span style="font-size:1.3rem;">💬</span><strong style="font-size:.9rem;">Vous avez posé une question</strong></div>
+        <div style="color:var(--muted);font-size:.8rem;line-height:1.5;">L'app a cherché, sélectionné les chunks, puis interrogé le LLM</div>
+      </div>
+      <div style="text-align:center;font-size:1.4rem;color:var(--cyan-2);">→</div>
+      <div class="card" style="border-left:3px solid var(--blue);padding:12px 15px;">
+        <div style="display:flex;gap:6px;margin-bottom:5px;flex-wrap:wrap;"><span class="badge b-cyan">Pipeline Requête</span><span class="badge b-orange">Slides 7–8</span></div>
+        <div style="color:var(--muted);font-size:.8rem;line-height:1.5;">Embed → Cosinus Top-K → Adaptive Router → Reranking → Prompt LLM</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 32px 1fr;gap:10px;align-items:center;">
+      <div class="card" style="border-left:3px solid var(--green);padding:12px 15px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;"><span style="font-size:1.3rem;">✅</span><strong style="font-size:.9rem;">Vous avez reçu une réponse sourcée</strong></div>
+        <div style="color:var(--muted);font-size:.8rem;line-height:1.5;">Document, numéro de page et score de similarité pour chaque citation</div>
+      </div>
+      <div style="text-align:center;font-size:1.4rem;color:#34d399;">→</div>
+      <div class="card" style="border-left:3px solid var(--green);padding:12px 15px;">
+        <div style="display:flex;gap:6px;margin-bottom:5px;flex-wrap:wrap;"><span class="badge b-green">Traçabilité</span><span class="badge b-purple">Slides 9–10</span></div>
+        <div style="color:var(--muted);font-size:.8rem;line-height:1.5;font-family:'JetBrains Mono',monospace;font-size:.75rem;">RagResponse { Answer, Citations, Strategy, TotalTokens }</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="display:flex;gap:12px;align-items:stretch;">
+    <div class="card-hi" style="flex:1;font-size:.85rem;line-height:1.7;">
+      <strong>🔍 Invisible mais actif en arrière-plan :</strong><br/>
+      <span style="color:var(--muted);">Reranking LLM (Top-10 → Top-5), compression contextuelle, AdaptiveQueryRouter (Direct / HyDE / Fusion), historique de conversation, index HNSW O(log n)</span>
+    </div>
+    <div class="card" style="min-width:190px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(6,182,212,.08));border-color:rgba(124,58,237,.25);">
+      <div style="font-size:2rem;">🎤</div>
+      <div style="font-weight:600;font-size:.95rem;">Des questions ?</div>
+      <div style="font-size:.8rem;color:var(--muted);">Repo disponible → Step 3</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 11 — RAG VS ALTERNATIVES -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s11">
+  <h2 class="slide-title">RAG vs <span class="gradient-text">alternatives</span></h2>
+  <p class="slide-sub">Quand utiliser quoi ? Les trois approches sont complémentaires.</p>
+  <table class="cmp-table">
+    <thead>
+      <tr>
+        <th>Critère</th>
+        <th class="rag">🔍 RAG</th>
+        <th class="ft">🧠 Fine-tuning</th>
+        <th class="ctx">📋 Contexte direct</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Mise à jour des données</strong></td><td><span class="yes">✅</span> Instantanée (ajouter des docs)</td><td><span class="no">❌</span> Réentraînement nécessaire</td><td><span class="yes">✅</span> Modifier le fichier</td></tr>
+      <tr><td><strong>Volume documentaire</strong></td><td><span class="yes">✅</span> Milliers de documents</td><td><span class="mid">⚠️</span> Données d'entraînement</td><td><span class="no">❌</span> Limité à ~20 docs</td></tr>
+      <tr><td><strong>Sources vérifiables</strong></td><td><span class="yes">✅</span> Citations précises</td><td><span class="no">❌</span> Opaque</td><td><span class="mid">⚠️</span> Partiel</td></tr>
+      <tr><td><strong>Coût</strong></td><td><span class="yes">✅</span> Faible (indexation 1×)</td><td><span class="no">❌</span> Très élevé</td><td><span class="yes">✅</span> Gratuit</td></tr>
+      <tr><td><strong>Données privées</strong></td><td><span class="yes">✅</span> On-premise possible</td><td><span class="mid">⚠️</span> Dépend du provider</td><td><span class="yes">✅</span> Local</td></tr>
+      <tr><td><strong>Questions imprévues</strong></td><td><span class="yes">✅</span> Recherche sémantique auto</td><td><span class="yes">✅</span> Si dans les données</td><td><span class="no">❌</span> Règles manuelles</td></tr>
+      <tr><td><strong>Précision sur niche</strong></td><td><span class="mid">⚠️</span> Dépend du chunking</td><td><span class="yes">✅</span> Excellente</td><td><span class="mid">⚠️</span> Si doc disponible</td></tr>
+      <tr><td><strong>Recommandé pour</strong></td><td><span style="color:var(--cyan-2);">Bases documentaires larges</span></td><td><span style="color:var(--orange);">Style / domaine très spécifique</span></td><td><span style="color:var(--purple-2);">Règles stables, &lt;20 docs clés</span></td></tr>
+    </tbody>
+  </table>
+  <div class="card-hi" style="margin-top:14px;font-size:.87rem;line-height:1.6;">
+    💡 <strong>En pratique :</strong> utilisez le <strong>contexte direct</strong> pour vos règles métier stables (10-20 docs), le <strong>RAG</strong> pour vos grandes bases documentaires, et le <strong>fine-tuning</strong> uniquement si vous avez un besoin de style ou de domaine très spécifique non couvert par les deux premiers.
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 12 — POINTS CLÉS -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section class="slide" id="s12">
+  <h2 class="slide-title">Points <span class="gradient-text">clés</span> à retenir</h2>
+  <p class="slide-sub">Ce qu'il faut garder en tête pour construire un RAG robuste</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;" id="kp-grid">
+    <div class="kp" id="kp0"><div class="kp-icon">✂️</div><div class="kp-text"><strong>Le chunking est la clé</strong> — 40% des problèmes RAG viennent d'un mauvais découpage. Overlap obligatoire.</div></div>
+    <div class="kp" id="kp1"><div class="kp-icon">🔍</div><div class="kp-text"><strong>Debug retrieval first</strong> — ~80% des échecs viennent de la récupération, pas du modèle. Inspectez les chunks avant de changer de LLM.</div></div>
+    <div class="kp" id="kp2"><div class="kp-icon">💡</div><div class="kp-text"><strong>HyDE & RAG-Fusion</strong> surpassent le RAG direct sur les questions complexes et comparatives.</div></div>
+    <div class="kp" id="kp3"><div class="kp-icon">🏆</div><div class="kp-text"><strong>Reranking (CrossEncoder)</strong> améliore significativement la précision finale — qualité > quantité.</div></div>
+    <div class="kp" id="kp4"><div class="kp-icon">🗄️</div><div class="kp-text"><strong>pgvector + PostgreSQL</strong> — un seul backend, EF Core natif, transactions ACID. Idéal pour démarrer.</div></div>
+    <div class="kp" id="kp5"><div class="kp-icon">🎥</div><div class="kp-text"><strong>Vidéo & Audio</strong> s'ingèrent comme des PDFs via FFmpeg + Whisper 100% local. Aucun coût cloud.</div></div>
+    <div class="kp" id="kp6"><div class="kp-icon">📊</div><div class="kp-text"><strong>Mesurez :</strong> faithfulness &gt; 85%, context recall &gt; 80%. Sans métriques, on ne sait pas si les améliorations fonctionnent.</div></div>
+    <div class="kp" id="kp7"><div class="kp-icon">🔒</div><div class="kp-text"><strong>Vos données restent chez vous</strong> — LM Studio local, Whisper local, pgvector on-premise. Zéro envoi cloud obligatoire.</div></div>
+  </div>
+  <div style="text-align:center;padding:16px;background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(6,182,212,.1));border:1px solid rgba(124,58,237,.25);border-radius:12px;">
+    <div style="font-size:1.5rem;margin-bottom:6px;">🎤</div>
+    <div style="font-weight:600;font-size:1.1rem;margin-bottom:4px;">Des questions ?</div>
+    <div style="font-size:.85rem;color:var(--muted);">Code source disponible dans le repo — Step 3 · Présentation : <code style="font-size:.8em;">Presentation/presentation-rag.html</code></div>
+  </div>
+</section>
+
+</div><!-- end slides-container -->
+
+<div id="nav-bar">
+  <button id="btn-prev" onclick="navigate(-1)" disabled>‹</button>
+  <span id="slide-title-bar"></span>
+  <span id="slide-num">1 / 15</span>
+  <button id="btn-next" onclick="navigate(1)">›</button>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════
+const SLIDE_IDS = ['s0','s1','s2','s3','s4','s5','s6','s6b','s7','s8','s9','s10','s10b','sdemo-a','sdemo-b','s11','s12'];
+const SLIDE_TITLES = ['Couverture','Le problème','Démo : Sans RAG vs Avec RAG','Qu\'est-ce que le RAG ?','Les embeddings','Pipeline : Indexation','Pipeline : Requête','Vue d\'ensemble','Le Chunking','Stratégies avancées','Reranking & Compression','Implémentation .NET','Extension Vidéo & Audio','Démo live — L\'application','Ce que vous venez de voir','RAG vs Alternatives','Points clés'];
+let current = 0;
+
+function navigate(dir) {
+  const next = current + dir;
+  if (next < 0 || next >= SLIDE_IDS.length) return;
+  const prev = SLIDE_IDS[current];
+  const curr = SLIDE_IDS[next];
+  document.getElementById(prev).classList.remove('active');
+  document.getElementById(curr).classList.add('active');
+  current = next;
+  updateNav();
+  onSlideShow(current);
+}
+
+function updateNav() {
+  document.getElementById('slide-num').textContent = (current+1) + ' / ' + SLIDE_IDS.length;
+  document.getElementById('slide-title-bar').textContent = SLIDE_TITLES[current];
+  document.getElementById('btn-prev').disabled = current === 0;
+  document.getElementById('btn-next').disabled = current === SLIDE_IDS.length - 1;
+  const pct = (current / (SLIDE_IDS.length - 1)) * 100;
+  document.getElementById('progress-bar').style.width = pct + '%';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') navigate(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   navigate(-1);
+});
+
+// Init first slide
+document.getElementById('s0').classList.add('active');
+updateNav();
+
+// ═══════════════════════════════════════════════════
+// PER-SLIDE HOOKS
+// ═══════════════════════════════════════════════════
+function onSlideShow(idx) {
+  if (idx === 8) initChunking();   // s7
+  if (idx === 16) startKeyPoints(); // s12
+}
+
+// ═══════════════════════════════════════════════════
+// SLIDE 2 — DÉMO
+// ═══════════════════════════════════════════════════
+const NO_RAG_TEXT = `Les frais de transport sont généralement remboursables selon la politique RH standard. Il suffit de soumettre un formulaire dans les 30 jours avec les justificatifs. Le plafond habituel est de 0,30 €/km pour les véhicules personnels.`;
+const NO_RAG_END = `<span class="halluc-tag">⚠️ Hallucination — non vérifié</span>`;
+
+const WITH_RAG_TEXT = `Selon notre politique interne, les frais de transport sont remboursés sur présentation des justificatifs originaux dans un délai de 30 jours. Les billets de train sont pris en charge en 2ème classe. Toute dépense supérieure à 200 € nécessite une validation préalable du service financier.`;
+const WITH_RAG_END = `<br/><span class="citation-badge">📄 Politique RH — p.3</span><span class="citation-badge">📄 Guide frais pro — p.7</span>`;
+
+let demoNoTimer = null, demoRagTimer = null;
+
+function typewriter(el, text, speed, endHtml, cb) {
+  el.innerHTML = '';
+  let i = 0;
+  const cursor = document.createElement('span');
+  cursor.className = 'cursor';
+  el.appendChild(cursor);
+  const t = setInterval(() => {
+    if (i < text.length) {
+      el.insertBefore(document.createTextNode(text[i]), cursor);
+      i++;
+    } else {
+      clearInterval(t);
+      cursor.remove();
+      el.innerHTML += endHtml;
+      if (cb) cb();
+    }
+  }, speed);
+  return t;
+}
+
+function demoNoRag() {
+  if (demoNoTimer) clearInterval(demoNoTimer);
+  demoNoTimer = typewriter(document.getElementById('resp-no-rag'), NO_RAG_TEXT, 18, NO_RAG_END);
+}
+function demoWithRag() {
+  if (demoRagTimer) clearInterval(demoRagTimer);
+  demoRagTimer = typewriter(document.getElementById('resp-with-rag'), WITH_RAG_TEXT, 18, WITH_RAG_END);
+}
+function demoAll() { demoNoRag(); setTimeout(demoWithRag, 400); }
+function demoReset() {
+  if (demoNoTimer) clearInterval(demoNoTimer);
+  if (demoRagTimer) clearInterval(demoRagTimer);
+  document.getElementById('resp-no-rag').innerHTML = '<span style="color:var(--faint);font-style:italic;">Cliquez "Voir" pour simuler la réponse...</span>';
+  document.getElementById('resp-with-rag').innerHTML = '<span style="color:var(--faint);font-style:italic;">Cliquez "Voir" pour simuler la réponse...</span>';
+}
+
+// ═══════════════════════════════════════════════════
+// SLIDE 4 — EMBEDDINGS
+// ═══════════════════════════════════════════════════
+const queryTargets = [
+  { cx:105, cy:88,  label:'Peut-on poser congé en janvier ?' },
+  { cx:500, cy:88,  label:'Frais transport remboursés ?' },
+  { cx:305, cy:240, label:'Outil pour déclarer un incident ?' }
+];
+function showQuery(i) {
+  const dot = document.getElementById('qdot');
+  const ripple = document.getElementById('qripple');
+  const label = document.getElementById('qlabel');
+  const hint = document.getElementById('qcenter-hint');
+  const t = queryTargets[i];
+  dot.setAttribute('cx', '310'); dot.setAttribute('cy', '155');
+  dot.setAttribute('opacity','1');
+  hint.setAttribute('opacity','0');
+  label.setAttribute('opacity','0');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      dot.setAttribute('cx', t.cx); dot.setAttribute('cy', t.cy);
+      label.setAttribute('x', t.cx); label.setAttribute('y', t.cy + 16);
+      label.textContent = '← ' + t.label;
+      setTimeout(() => { label.setAttribute('opacity','1'); }, 800);
+      ripple.setAttribute('cx', t.cx); ripple.setAttribute('cy', t.cy);
+      ripple.setAttribute('opacity','0.8');
+      setTimeout(() => { ripple.setAttribute('opacity','0'); }, 1200);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// SLIDE 5 — INGESTION STEP-BY-STEP
+// ═══════════════════════════════════════════════════
+const iDescs = [
+  '📄 <strong>Extraction :</strong> les fichiers (PDF, Word, HTML, MP4…) sont lus et convertis en texte brut. PdfPig pour les PDFs, FFmpeg + Whisper pour les vidéos.',
+  '✂️ <strong>Chunking :</strong> le texte est découpé en morceaux de 800 caractères avec 100 caractères de chevauchement (overlap). L\'overlap garantit qu\'aucune idée n\'est coupée entre deux chunks.',
+  '🔢 <strong>Embedding :</strong> chaque chunk est transformé en un vecteur de 768 nombres par le modèle nomic-embed-text. Deux chunks proches en sens auront des vecteurs proches.',
+  '🗄️ <strong>pgvector :</strong> les vecteurs sont stockés dans PostgreSQL avec un index HNSW. La recherche par similarité cosinus retrouvera plus tard les chunks les plus pertinents à une question.'
+];
+let iStep = 0;
+function iShowStep(n) {
+  for (let s = 0; s < 4; s++) {
+    const el = document.getElementById('is' + s);
+    const ar = document.getElementById('ia' + s);
+    if (el) el.setAttribute('opacity', s <= n ? '1' : '0');
+    if (ar && s < 4) ar.setAttribute('opacity', s < n ? '1' : '0');
+  }
+  document.getElementById('i-desc').innerHTML = iDescs[n] || '';
+  document.getElementById('i-counter').textContent = (n+1) + ' / 4';
+  document.getElementById('i-btn').disabled = n >= 3;
+}
+function iNext() { if (iStep < 4) { iShowStep(iStep); iStep++; } }
+function iReset() { iStep = 0; for(let s=0;s<4;s++){document.getElementById('is'+s).setAttribute('opacity','0');const a=document.getElementById('ia'+s);if(a)a.setAttribute('opacity','0');} document.getElementById('i-desc').innerHTML='<span style="color:var(--muted);font-style:italic;">Cliquez sur "Étape suivante" pour découvrir chaque étape…</span>';document.getElementById('i-counter').textContent='0 / 4';document.getElementById('i-btn').disabled=false; }
+
+// ═══════════════════════════════════════════════════
+// SLIDE 6 — QUERY STEP-BY-STEP
+// ═══════════════════════════════════════════════════
+const qDescs = [
+  '❓ <strong>Question :</strong> l\'utilisateur pose une question en langage naturel. L\'AdaptiveQueryRouter analyse sa complexité et choisit la meilleure stratégie (Direct, HyDE ou Fusion).',
+  '🔢 <strong>Embed Question :</strong> la question est transformée en vecteur avec le même modèle que lors de l\'ingestion — garantissant la compatibilité des espaces vectoriels.',
+  '🔍 <strong>Top-K Cosinus :</strong> la similarité cosinus est calculée entre le vecteur de la question et tous les chunks stockés. Les 10 chunks les plus proches (seuil 0.3) sont sélectionnés.',
+  '🤖 <strong>LLM :</strong> les chunks pertinents + la question + l\'historique sont injectés dans le prompt. Le LLM génère une réponse basée <em>uniquement</em> sur ce contexte, avec temperature=0.1.',
+  '✅ <strong>Réponse + Citations :</strong> la réponse générée est renvoyée avec les citations : document source, numéro de page, extrait et score de similarité. Traçabilité complète.'
+];
+let qStep = 0;
+function qShowStep(n) {
+  for (let s = 0; s < 5; s++) {
+    document.getElementById('qs'+s).setAttribute('opacity', s <= n ? '1' : '0');
+    const a = document.getElementById('qa'+s);
+    if (a) a.setAttribute('opacity', s < n ? '1' : '0');
+  }
+  document.getElementById('q-desc').innerHTML = qDescs[n];
+  document.getElementById('q-counter').textContent = (n+1) + ' / 5';
+  document.getElementById('q-btn').disabled = n >= 4;
+}
+function qNext() { if (qStep < 5) { qShowStep(qStep); qStep++; } }
+function qReset() { qStep=0; for(let s=0;s<5;s++){document.getElementById('qs'+s).setAttribute('opacity','0');const a=document.getElementById('qa'+s);if(a)a.setAttribute('opacity','0');} document.getElementById('q-desc').innerHTML='<span style="color:var(--muted);font-style:italic;">Cliquez sur "Étape suivante" pour découvrir chaque étape…</span>';document.getElementById('q-counter').textContent='0 / 5';document.getElementById('q-btn').disabled=false; }
+
+// ═══════════════════════════════════════════════════
+// SLIDE 7 — CHUNKING INTERACTIF
+// ═══════════════════════════════════════════════════
+const CHUNK_TEXT = `La politique de remboursement des frais professionnels s'applique à tous les collaborateurs. Tout déplacement doit être préalablement autorisé par le responsable hiérarchique. Les frais de transport sont pris en charge sur présentation des justificatifs originaux dans un délai de 30 jours. Les billets de train doivent être réservés en 2ème classe sauf exception validée par la direction. Pour les vols de moins de 4 heures, la classe économique est obligatoire. Les frais d'hôtel sont remboursables jusqu'à 120€ par nuit en province et 180€ à Paris. Les repas professionnels sont remboursables dans la limite de 25€ par repas sur justificatif. Le remboursement kilométrique suit le barème fiscal en vigueur. Toute dépense supérieure à 200€ doit être validée préalablement par le service financier. Les notes de frais doivent être soumises dans les 15 jours suivant le retour de déplacement.`;
+
+let currentChunk = 800;
+
+function initChunking() {
+  setChunk(800);
+}
+
+function setChunk(size) {
+  currentChunk = size;
+  ['200','500','800'].forEach(s => {
+    const btn = document.getElementById('ck-'+s);
+    if (!btn) return;
+    if (parseInt(s) === size) {
+      btn.style.background = 'var(--purple)'; btn.style.borderColor = 'var(--purple)'; btn.style.color = 'white';
+    } else {
+      btn.style.background = ''; btn.style.borderColor = ''; btn.style.color = '';
+    }
+  });
+  document.getElementById('chunk-size-display').textContent = size;
+  const showOverlap = document.getElementById('ck-overlap') && document.getElementById('ck-overlap').checked;
+  const overlap = Math.floor(size * 0.125);
+  const ratio = ((overlap / size) * 100).toFixed(1);
+  const ratioEl = document.getElementById('chunk-ratio-display');
+  const overlapEl = document.getElementById('chunk-overlap-display');
+  if (ratioEl) ratioEl.textContent = ratio + '%';
+  if (overlapEl) overlapEl.textContent = overlap;
+  const txt = CHUNK_TEXT;
+  let html = '';
+  let pos = 0;
+  let idx = 0;
+  const chunks = [];
+  while (pos < txt.length) {
+    const end = Math.min(pos + size, txt.length);
+    chunks.push({ start: pos, end });
+    pos += size - overlap;
+    idx++;
+  }
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i];
+    const next = chunks[i+1];
+    const cls = i % 2 === 0 ? 'chunk-0' : 'chunk-1';
+    if (showOverlap && next) {
+      const main = txt.slice(c.start, next.start);
+      const ov = txt.slice(next.start, c.end);
+      html += `<span class="${cls}">${esc(main)}</span>`;
+      html += `<span class="chunk-ov">${esc(ov)}</span>`;
+    } else {
+      html += `<span class="${cls}">${esc(txt.slice(c.start, c.end))}</span>`;
+    }
+    if (i < chunks.length - 1) html += ' ';
+  }
+  document.getElementById('chunk-display').innerHTML = html;
+  document.getElementById('chunk-count').textContent = chunks.length;
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ═══════════════════════════════════════════════════
+// SLIDE 8 — STRATEGY TABS
+// ═══════════════════════════════════════════════════
+function setStrat(id) {
+  ['direct','hyde','fusion','adaptive'].forEach(s => {
+    document.getElementById('sp-'+s).classList.toggle('active', s === id);
+  });
+  document.querySelectorAll('.strat-tab').forEach((t, i) => {
+    const ids = ['direct','hyde','fusion','adaptive'];
+    t.classList.toggle('active', ids[i] === id);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// SLIDE 9 — RERANKING FUNNEL
+// ═══════════════════════════════════════════════════
+const rkStages = [
+  { label:'🔍 Recherche vectorielle', count:10, color:'var(--blue)',    desc:'La similarité cosinus retourne les <strong>10 chunks</strong> les plus proches de la question. Certains peuvent être hors sujet — le bruit est élevé.' },
+  { label:'📝 Compression contextuelle', count:8,  color:'var(--orange)', desc:'Le LLM extrait uniquement les phrases pertinentes de chaque chunk. Les chunks vides sont éliminés. Résultat : <strong>8 chunks compressés</strong>, moins de tokens.' },
+  { label:'🎯 Reranking LLM', count:5,  color:'var(--green)',  desc:'Le LLM score chaque chunk de 0 à 10 selon sa vraie pertinence pour la question (pas juste la similarité cosinus). On ne garde que les <strong>5 meilleurs</strong>.' },
+  { label:'🤖 LLM final', count:1,  color:'var(--purple)', desc:'Les <strong>5 chunks de haute qualité</strong> + la question + l\'historique sont envoyés au LLM. Réponse générée avec citations. Précision maximale, tokens minimaux.' }
+];
+let rkStep = -1;
+
+function buildFunnel() {
+  const el = document.getElementById('funnel-stages');
+  el.innerHTML = rkStages.map((s, i) => `
+    <div id="rk-stage-${i}" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;opacity:.35;transition:all .4s;">
+      <span style="font-size:.85rem;">${s.label}</span>
+      <span style="font-weight:700;color:${s.color};">→ Top-${s.count}</span>
+    </div>`).join('');
+}
+
+function buildViz(activeUpTo) {
+  const viz = document.getElementById('rk-viz');
+  viz.innerHTML = '';
+  for (let i = 0; i <= activeUpTo && i < rkStages.length; i++) {
+    const s = rkStages[i];
+    const row = document.createElement('div');
+    row.style.cssText = 'margin-bottom:10px;';
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:.78rem;color:var(--muted);margin-bottom:4px;';
+    label.textContent = s.label + ' → Top-' + s.count;
+    row.appendChild(label);
+    const chips = document.createElement('div');
+    for (let j = 0; j < s.count; j++) {
+      const chip = document.createElement('span');
+      chip.className = 'chunk-chip';
+      chip.style.background = s.color;
+      chip.style.borderColor = s.color;
+      chip.style.color = 'white';
+      chip.textContent = 'C' + (j+1);
+      chips.appendChild(chip);
+    }
+    row.appendChild(chips);
+    viz.appendChild(row);
+  }
+}
+
+function rkNext() {
+  if (rkStep >= rkStages.length - 1) return;
+  rkStep++;
+  for (let i = 0; i < rkStages.length; i++) {
+    const el = document.getElementById('rk-stage-' + i);
+    if (el) el.style.opacity = i <= rkStep ? '1' : '.35';
+  }
+  buildViz(rkStep);
+  document.getElementById('rk-desc').innerHTML = rkStages[rkStep].desc;
+  document.getElementById('rk-btn').disabled = rkStep >= rkStages.length - 1;
+}
+
+function rkReset() {
+  rkStep = -1;
+  buildFunnel();
+  document.getElementById('rk-viz').innerHTML = '';
+  document.getElementById('rk-desc').innerHTML = '<span style="color:var(--muted);font-style:italic;">Cliquez "Étape suivante" pour animer le pipeline…</span>';
+  document.getElementById('rk-btn').disabled = false;
+}
+
+// Init reranking on page load
+buildFunnel();
+
+// ═══════════════════════════════════════════════════
+// SLIDE 10 — CODE TABS
+// ═══════════════════════════════════════════════════
+function setCode10(id) {
+  ['cfg','provider','sql'].forEach(s => {
+    document.getElementById('cp-'+s).classList.toggle('active', s === id);
+  });
+  document.querySelectorAll('#code-tabs-10 .code-tab').forEach((t, i) => {
+    const ids = ['cfg','provider','sql'];
+    t.classList.toggle('active', ids[i] === id);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// SLIDES 13-14 — DÉMO LIVE (CHECKLIST)
+// ═══════════════════════════════════════════════════
+function toggleCheck(el) {
+  el.classList.toggle('checked');
+  const check = el.querySelector('.ci-check');
+  check.textContent = el.classList.contains('checked') ? '✓' : '';
+}
+
+// ═══════════════════════════════════════════════════
+// SLIDE 12 — KEY POINTS ANIMATION
+// ═══════════════════════════════════════════════════
+function startKeyPoints() {
+  for (let i = 0; i < 8; i++) {
+    const el = document.getElementById('kp' + i);
+    if (el) {
+      el.classList.remove('visible');
+      setTimeout(() => el.classList.add('visible'), 150 + i * 130);
+    }
+  }
+}
+</script>
+</body>
+</html>

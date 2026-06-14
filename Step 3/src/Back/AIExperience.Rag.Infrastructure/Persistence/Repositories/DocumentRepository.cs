@@ -18,6 +18,12 @@ public sealed class DocumentRepository(AppDbContext context) : IDocumentReposito
             .FirstOrDefaultAsync(d => d.Id == id, ct);
 
     /// <inheritdoc/>
+    public async Task<IEnumerable<Document>> GetAllAsync(CancellationToken ct = default)
+        => await context.Documents
+            .OrderByDescending(d => d.CreatedAt)
+            .ToListAsync(ct);
+
+    /// <inheritdoc/>
     public async Task<(IEnumerable<Document> Items, int TotalCount)> GetByUserIdAsync(
         string userId, int page, int pageSize, CancellationToken ct = default)
     {

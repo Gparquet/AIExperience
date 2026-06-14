@@ -52,7 +52,39 @@ public sealed class IngestionService(
         }
     }
 
-    string CleanString(string input) => input?.Replace("\0", string.Empty);
+    /// <inheritdoc/>
+    public async Task IngestTextAsync(
+        string text,
+        Guid documentId,
+        DocumentMetadata metadata,
+        CancellationToken ct = default)
+    {
+        // 1. Chunking du texte brut (l'étape d'extraction est déjà faite — transcription)
+        var chunker = CreateChunker(ChunkingStrategy.Recursive);
+        var textChunks = chunker.Chunk(text);
+
+        // 2. Embedding + stockage dans pgvector pour chaque chunk
+        var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), ct);
+
+        for (int i = 0; i < textChunks.Count; i++)
+        {
+            var tc = textChunks[i];
+            var embeddingDimensions = embeddings[i].Length;
+
+            var chunk = DocumentChunk.Create(
+                documentId,
+                CleanString(tc.Content),
+                i,
+                embeddingDimensions,
+                tc.PageNumber,
+                string.IsNullOrEmpty(tc.SectionTitle) ? string.Empty : CleanString(tc.SectionTitle)
+            );
+
+            await vectorStoreService.UpsertAsync(chunk, embeddings[i], ct);
+        }
+    }
+
+    static string CleanString(string? input) => input?.Replace("\0", string.Empty) ?? string.Empty;
 
     /// <inheritdoc/>
     public async Task DeleteAsync(Guid documentId, CancellationToken ct = default)

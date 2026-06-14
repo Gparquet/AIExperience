@@ -4,7 +4,11 @@ namespace AIExperience.Rag.Application.Document.Command;
 
 public sealed class UploadDocumentValidator : AbstractValidator<UploadDocumentCommand>
 {
-    private static readonly string[] AllowedExtensions = [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".txt"];
+    private static readonly string[] AllowedExtensions =
+        [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".txt",
+         ".mp4", ".mkv", ".webm", ".avi", ".mov",          // vidéo
+         ".wav", ".mp3", ".m4a", ".ogg", ".flac"];          // audio
+
     private static readonly string[] AllowedContentTypes =
     [
         "application/pdf",
@@ -12,7 +16,11 @@ public sealed class UploadDocumentValidator : AbstractValidator<UploadDocumentCo
         "application/msword",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "application/vnd.ms-excel",
-        "text/plain"
+        "text/plain",
+        // Vidéo
+        "video/mp4", "video/x-matroska", "video/webm", "video/avi", "video/quicktime",
+        // Audio
+        "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/flac"
     ];
 
     private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 Mo

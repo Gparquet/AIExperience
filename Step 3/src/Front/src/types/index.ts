@@ -32,3 +32,18 @@ export type StreamEvent =
   | { event: 'token'; data: { token: string } }
   | { event: 'done'; data: AskQuestionResponse }
   | { event: 'error'; data: { message: string } };
+
+export interface TranscribeVideoResponse {
+  /** Transcription brute avec timestamps [hh:mm:ss → hh:mm:ss] */
+  rawTranscription: string;
+  /** Transcription nettoyée par le LLM (si demandée) */
+  cleanedTranscription: string | null;
+  /** Durée totale de la vidéo/audio (ex: "00:05:42.1234") */
+  duration: string;
+  /** Nombre de segments transcrits */
+  segmentCount: number;
+  /** ID du document créé dans le RAG (si autoIngest = true) */
+  documentId: string | null;
+  /** Temps de traitement total (ex: "00:01:23.4567") */
+  processingTime: string;
+}

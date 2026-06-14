@@ -22,7 +22,8 @@ public class DocumentsController(
     [HttpGet]
     public async Task<ActionResult<IEnumerable<DocumentResponse>>> GetAll()
     {
-        var (documents, _) = await documentRepository.GetByUserIdAsync(DefaultUserId, page: 1, pageSize: 100);
+        // GetAllAsync retourne tous les documents sans filtre utilisateur (auth non implémentée)
+        var documents = await documentRepository.GetAllAsync();
         return Ok(documents.Select(ToResponse));
     }
 

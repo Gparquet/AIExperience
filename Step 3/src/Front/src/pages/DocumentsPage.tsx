@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { DocumentResponse } from '../types';
 
 export default function DocumentsPage() {
+  const navigate = useNavigate();
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -164,6 +166,7 @@ export default function DocumentsPage() {
               <th>Taille</th>
               <th>Statut</th>
               <th>Ajouté le</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -188,6 +191,16 @@ export default function DocumentsPage() {
                   </span>
                 </td>
                 <td>{new Date(doc.createdAt).toLocaleDateString('fr-FR')}</td>
+                <td className="col-actions" onClick={e => e.stopPropagation()}>
+                  {doc.status === 'Completed' && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => navigate('/chat', { state: { documentId: doc.id, documentName: doc.fileName } })}
+                    >
+                      Chat →
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

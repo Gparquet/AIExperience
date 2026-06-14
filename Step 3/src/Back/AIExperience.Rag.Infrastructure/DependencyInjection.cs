@@ -1,14 +1,18 @@
 ﻿using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Rag.Domain.Interfaces.Services.AI;
+using AIExperience.Rag.Domain.Interfaces.Services.Video;
 using AIExperience.Rag.Infrastructure.AI.Embedding;
 using AIExperience.Rag.Infrastructure.AI.Rag;
+using AIExperience.Rag.Infrastructure.AI.Transcription;
+using AIExperience.Rag.Infrastructure.AI.Video;
 using AIExperience.Rag.Infrastructure.Options;
 using AIExperience.Rag.Infrastructure.Persistence;
 using AIExperience.Rag.Infrastructure.Persistence.Repositories;
 using AIExperience.Rag.Infrastructure.VectorStore;
 using Azure;
 using Azure.AI.OpenAI;
+using FFMpegCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -42,7 +46,8 @@ public static class DependencyInjection
             .AddAIClients(configuration)
             .ConfigureAiService()
             .AddSemanticKernel(configuration)
-            .AddRagPipeline();
+            .AddRagPipeline()
+            .AddVideoTranscription(configuration);
 
     }
 
@@ -50,6 +55,29 @@ public static class DependencyInjection
     {
         services.AddOptions<AiProviderOptions>().Bind(configuration.GetSection("AI"));
         services.AddOptions<RagOptions>().Bind(configuration.GetSection("RagOptions"));
+        return services;
+    }
+
+    /// <summary>
+    /// Enregistre les services de transcription vidéo/audio 100% locaux (FFmpeg + Whisper).
+    /// </summary>
+    private static IServiceCollection AddVideoTranscription(this IServiceCollection services, IConfiguration configuration)
+    {
+        // Bind des options Whisper depuis appsettings.json
+        services.AddOptions<WhisperOptions>()
+            .Bind(configuration.GetSection(WhisperOptions.SectionName));
+
+        // Configurer le chemin du binaire FFmpeg (si spécifié dans la config)
+        var ffmpegPath = configuration["FFmpeg:BinaryPath"];
+        if (!string.IsNullOrWhiteSpace(ffmpegPath))
+        {
+            GlobalFFOptions.Configure(options => options.BinaryFolder = ffmpegPath);
+        }
+
+        // Enregistrement en Singleton : FFmpeg est stateless, Whisper charge le modèle une seule fois
+        services.AddSingleton<IVideoProcessorService, FFmpegVideoProcessorService>();
+        services.AddSingleton<ITranscriptionService, WhisperTranscriptionService>();
+
         return services;
     }
 

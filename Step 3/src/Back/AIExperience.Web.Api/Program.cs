@@ -29,7 +29,10 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.UseHttpsRedirection();
+// En production uniquement — évite le problème de certificat auto-signé entre Vite et Kestrel en dev
+if (!app.Environment.IsDevelopment())
+    app.UseHttpsRedirection();
+
 app.UseCors();
 app.MapControllers();
 

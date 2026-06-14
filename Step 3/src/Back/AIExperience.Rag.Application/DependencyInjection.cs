@@ -6,6 +6,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
+using AIExperience.Rag.Domain.Interfaces.Services.Video;
 
 namespace AIExperience.Rag.Application
 {
@@ -53,6 +54,8 @@ namespace AIExperience.Rag.Application
         {
             services.AddSingleton<ITextExtractor, PdfTextExtractor>();
             services.AddSingleton<ITextExtractor, HtmlTextExtractor>();
+            // VideoTextExtractor dépend de IVideoProcessorService + ITranscriptionService (Infrastructure Singletons)
+            services.AddSingleton<ITextExtractor, VideoTextExtractor>();
             services.AddSingleton<ICompositeTextExtractor, CompositeTextExtractor>();
             return services;
         }

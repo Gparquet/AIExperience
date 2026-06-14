@@ -12,6 +12,13 @@ public interface IDocumentRepository
     /// <param name="ct">Jeton d'annulation.</param>
     Task<Document?> GetByIdAsync(Guid id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Récupère tous les documents (toutes sources confondues).
+    /// Utilisé tant que l'authentification n'est pas implémentée.
+    /// </summary>
+    /// <param name="ct">Jeton d'annulation.</param>
+    Task<IEnumerable<Document>> GetAllAsync(CancellationToken ct = default);
+
     /// <summary>Récupère la liste paginée des documents d'un utilisateur.</summary>
     /// <param name="userId">Identifiant de l'utilisateur.</param>
     /// <param name="page">Numéro de page (1-based).</param>

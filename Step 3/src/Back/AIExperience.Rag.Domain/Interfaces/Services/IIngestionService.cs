@@ -25,6 +25,20 @@ public interface IIngestionService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Ingère un texte déjà extrait (ex: transcription vidéo) sans passer par le parsing de fichier.
+    /// Pipeline : chunking → embedding → stockage pgvector.
+    /// </summary>
+    /// <param name="text">Texte brut à ingérer.</param>
+    /// <param name="documentId">Identifiant du document déjà créé en base de données.</param>
+    /// <param name="metadata">Métadonnées du document.</param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    Task IngestTextAsync(
+        string text,
+        Guid documentId,
+        DocumentMetadata metadata,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Supprime tous les chunks et vecteurs associés à un document de pgvector.
     /// </summary>
     /// <param name="documentId">Identifiant du document à supprimer.</param>

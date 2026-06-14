@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { useLocation } from 'react-router-dom';
 import { api } from '../api/client';
-import type { CitationResponse } from '../types';
+import type { CitationResponse, DocumentResponse } from '../types';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -10,7 +11,27 @@ interface Message {
   citations?: CitationResponse[];
 }
 
+// State optionnel transmis par DocumentsPage ou VideoPage via navigate('/chat', { state })
+interface ChatLocationState {
+  documentId?: string;
+  documentName?: string;
+}
+
 export default function ChatPage() {
+  const location = useLocation();
+  const locationState = (location.state as ChatLocationState | null) ?? {};
+
+  // Filtre actif : documentId ciblé (null = recherche globale sur tous les documents)
+  const [filteredDocumentId, setFilteredDocumentId] = useState<string | null>(
+    locationState.documentId ?? null
+  );
+  const [filteredDocumentName, setFilteredDocumentName] = useState<string | null>(
+    locationState.documentName ?? null
+  );
+
+  // Liste des documents disponibles pour le sélecteur
+  const [documents, setDocuments] = useState<DocumentResponse[]>([]);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,11 +40,30 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const streamingRef = useRef('');
 
+  // Chargement de la liste des documents pour le sélecteur
+  useEffect(() => {
+    api.documents.list()
+      .then(docs => setDocuments(docs.filter(d => d.status === 'Completed')))
+      .catch(() => { /* sélecteur non bloquant */ });
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleDocumentSelect(e: React.ChangeEvent<HTMLSelectElement>) {
+    const val = e.target.value;
+    if (!val) {
+      setFilteredDocumentId(null);
+      setFilteredDocumentName(null);
+    } else {
+      const doc = documents.find(d => d.id === val);
+      setFilteredDocumentId(val);
+      setFilteredDocumentName(doc?.fileName ?? null);
+    }
+  }
+
+  async function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
     const q = question.trim();
     if (!q || loading) return;
@@ -35,8 +75,11 @@ export default function ChatPage() {
     streamingRef.current = '';
     setError(null);
 
+    // Filtre : tableau avec l'id ciblé, ou vide pour recherche globale
+    const documentIds = filteredDocumentId ? [filteredDocumentId] : [];
+
     try {
-      for await (const event of api.chat.askStream({ question: q, documentIds: [] })) {
+      for await (const event of api.chat.askStream({ question: q, documentIds })) {
         if (event.event === 'token') {
           streamingRef.current += event.data.token;
           flushSync(() => {
@@ -68,11 +111,50 @@ export default function ChatPage() {
 
   return (
     <div className="chat-main">
+      {/* Sélecteur de document — permet de cibler un document ou de rechercher globalement */}
+      <div className="chat-filter-bar">
+        <label className="chat-filter-label" htmlFor="doc-select">
+          Rechercher dans :
+        </label>
+        <select
+          id="doc-select"
+          className="chat-filter-select"
+          value={filteredDocumentId ?? ''}
+          onChange={handleDocumentSelect}
+          disabled={loading}
+        >
+          <option value="">Tous les documents</option>
+          {documents.map(doc => (
+            <option key={doc.id} value={doc.id}>{doc.fileName}</option>
+          ))}
+        </select>
+        {filteredDocumentId && (
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => { setFilteredDocumentId(null); setFilteredDocumentName(null); }}
+            disabled={loading}
+          >
+            ✕ Retirer le filtre
+          </button>
+        )}
+      </div>
+
+      {/* Badge indiquant le filtre actif */}
+      {filteredDocumentName && (
+        <div className="chat-filter-badge">
+          Filtré sur : <strong>{filteredDocumentName}</strong>
+        </div>
+      )}
+
       <div className="messages">
         {messages.length === 0 && (
           <div className="empty-state">
             <span>💬</span>
-            <p>Posez une question sur vos documents.</p>
+            <p>
+              {filteredDocumentId
+                ? `Posez une question sur "${filteredDocumentName}".`
+                : 'Posez une question sur vos documents.'}
+            </p>
           </div>
         )}
         {messages.map((msg, i) => (

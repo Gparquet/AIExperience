@@ -1,4 +1,4 @@
-import type { AskQuestionRequest, AskQuestionResponse, DocumentResponse, StreamEvent } from '../types';
+import type { AskQuestionRequest, AskQuestionResponse, DocumentResponse, StreamEvent, TranscribeVideoResponse } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -24,6 +24,28 @@ export const api = {
       });
     },
     delete: (id: string) => request<void>(`/api/documents/${id}`, { method: 'DELETE' }),
+  },
+  video: {
+    transcribe: (
+      file: File,
+      language = 'fr',
+      cleanWithLlm = true,
+      autoIngest = true,
+      title?: string,
+    ) => {
+      const body = new FormData();
+      body.append('file', file);
+      const params = new URLSearchParams({
+        language,
+        cleanWithLlm: String(cleanWithLlm),
+        autoIngest: String(autoIngest),
+        ...(title ? { title } : {}),
+      });
+      return request<TranscribeVideoResponse>(`/api/video/transcribe?${params}`, {
+        method: 'POST',
+        body,
+      });
+    },
   },
   chat: {
     ask: (payload: AskQuestionRequest) =>
