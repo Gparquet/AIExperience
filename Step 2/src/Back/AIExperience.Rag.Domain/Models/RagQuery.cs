@@ -23,6 +23,12 @@ public sealed record RagQuery
     /// <summary>Stratégie RAG à utiliser. Par défaut : <see cref="RagStrategy.Adaptive"/>.</summary>
     public RagStrategy Strategy { get; init; } = RagStrategy.Adaptive;
 
+    /// <summary>
+    /// Indique si le LLM doit être utilisé pour la recherche et la synthèse.
+    /// Quand <c>false</c>, le pipeline effectue une recherche full-text PostgreSQL et retourne les chunks bruts.
+    /// </summary>
+    public bool UseLlm { get; init; } = true;
+
     /// <summary>Indique si l'historique de conversation doit être injecté dans le prompt.</summary>
     public bool IncludeHistory { get; init; } = true;
 

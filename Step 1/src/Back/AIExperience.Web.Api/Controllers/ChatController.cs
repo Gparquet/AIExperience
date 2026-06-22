@@ -23,7 +23,8 @@ public class ChatController(IRagPipelineService ragPipelineService) : Controller
         {
             Question = request.Question,
             DocumentIds = request.DocumentIds,
-            Strategy = request.Strategy
+            Strategy = request.Strategy,
+            UseLlm = request.UseLlm
         }, cancellationToken);
 
         var citations = ragResponse.Citations
@@ -61,7 +62,8 @@ public class ChatController(IRagPipelineService ragPipelineService) : Controller
             {
                 Question = request.Question,
                 DocumentIds = request.DocumentIds,
-                Strategy = request.Strategy
+                Strategy = request.Strategy,
+                UseLlm = request.UseLlm
             }, cancellationToken))
             {
                 if (chunk.IsDone && chunk.FinalResponse is { } final)

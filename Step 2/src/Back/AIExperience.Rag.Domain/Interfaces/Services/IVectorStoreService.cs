@@ -25,6 +25,21 @@ namespace AIExperience.Rag.Domain.Interfaces.Services
             CancellationToken ct = default);
 
         /// <summary>
+        /// Effectue une recherche full-text PostgreSQL (<c>plainto_tsquery</c>) sans embedding.
+        /// Utilisé en mode "sans LLM" pour comparer l'approche classique versus sémantique.
+        /// </summary>
+        /// <param name="query">Texte de la requête utilisateur.</param>
+        /// <param name="topK">Nombre maximum de résultats.</param>
+        /// <param name="documentIds">Filtre optionnel sur les documents à interroger.</param>
+        /// <param name="ct">Jeton d'annulation.</param>
+        /// <returns>Liste de tuples (chunk, score ts_rank) triée par score décroissant.</returns>
+        Task<IReadOnlyList<(DocumentChunk Chunk, double Score)>> SearchFullTextAsync(
+            string query,
+            int topK = 10,
+            Guid[]? documentIds = null,
+            CancellationToken ct = default);
+
+        /// <summary>
         /// Insère ou met à jour l'embedding d'un chunk dans pgvector.
         /// </summary>
         /// <param name="chunk">Chunk à indexer.</param>

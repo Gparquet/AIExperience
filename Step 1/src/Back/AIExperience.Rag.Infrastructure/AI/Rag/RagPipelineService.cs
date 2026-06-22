@@ -29,6 +29,10 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             var sw = Stopwatch.StartNew();
             var ragOptions = options.Value;
 
+            // Mode sans LLM : recherche full-text PostgreSQL, retourne les chunks bruts sans synthèse.
+            if (!query.UseLlm)
+                return await AskFullTextAsync(query, ragOptions, sw, ct);
+
             // 1. Résolution de la stratégie
             var strategy = query.Strategy == RagStrategy.Adaptive
                 ? await adaptiveQueryRouter.GetRagStrategyAsync(query.Question, ct)
@@ -82,6 +86,14 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
         {
             var sw = Stopwatch.StartNew();
             var ragOptions = options.Value;
+
+            // Mode sans LLM : pas de streaming — retourne un unique événement "done" avec les chunks bruts.
+            if (!query.UseLlm)
+            {
+                var response = await AskFullTextAsync(query, ragOptions, sw, ct);
+                yield return new RagStreamChunk { IsDone = true, FinalResponse = response };
+                yield break;
+            }
 
             // 1. Résolution de la stratégie
             var strategy = query.Strategy == RagStrategy.Adaptive
@@ -148,6 +160,38 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             };
         }
 
+        /// <summary>
+        /// Recherche full-text (sans LLM) via <c>plainto_tsquery</c> PostgreSQL.
+        /// Retourne les chunks bruts avec leur score textuel, sans synthèse ni embedding.
+        /// </summary>
+        private async Task<RagResponse> AskFullTextAsync(
+            RagQuery query, RagOptions opts, Stopwatch sw, CancellationToken ct)
+        {
+            var docIds = query.DocumentIds.Count > 0 ? query.DocumentIds.ToArray() : null;
+            var chunks = await vectorStoreService.SearchFullTextAsync(query.Question, opts.Retrieval.TopK, docIds, ct);
+
+            // Les citations portent les données structurées — l'answer est un résumé sobre.
+            var answer = chunks.Count == 0
+                ? "Aucun résultat trouvé pour cette recherche."
+                : $"{chunks.Count} résultat(s) trouvé(s) pour « {query.Question} ».";
+
+            var citations = chunks.Select(r => Citation.Create(
+                Guid.Empty, r.Chunk.DocumentId,
+                $"Document {r.Chunk.DocumentId}",
+                r.Chunk.Content[..Math.Min(300, r.Chunk.Content.Length)],
+                r.Score, r.Chunk.PageNumber)).ToList();
+
+            sw.Stop();
+            return new RagResponse
+            {
+                Answer = answer,
+                Citations = citations,
+                StrategyUsed = RagStrategy.FullText,
+                TotalTokens = 0,
+                DurationMs = sw.ElapsedMilliseconds
+            };
+        }
+
         private async Task<IReadOnlyList<(DocumentChunk Chunk, double Score)>> RetrieveChunksAsync(
         RagQuery query, RagStrategy strategy, RagOptions opts, CancellationToken ct)
         {
@@ -158,7 +202,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             // Direct
             var directVector = await embeddingService.EmbedAsync(query.Question, ct);
             var directChunks = await vectorStoreService.SearchAsync(directVector, opts.Retrieval.TopK, docIds, opts.Retrieval.ScoreThreshold, ct);
-            // TODO: mise en place d'un service de reclassement des chunks. 
+            // TODO: mise en place d'un service de reclassement des chunks.
             // Evaluation de la pertinence réelle de chaque chunk par  rapport à la question indépendamment du cosinus
             return directChunks;
         }

@@ -83,6 +83,64 @@ public sealed class PgVectorStoreService : IVectorStoreService
     }
 
     /// <inheritdoc/>
+    public async Task<IReadOnlyList<(DocumentChunk Chunk, double Score)>> SearchFullTextAsync(
+        string query,
+        int topK = 10,
+        Guid[]? documentIds = null,
+        CancellationToken ct = default)
+    {
+        var documentFilter = documentIds?.Length > 0
+            ? "AND dc.document_id = ANY(@docIds)"
+            : string.Empty;
+
+        // plainto_tsquery convertit la phrase en opérateurs AND implicites — plus robuste que to_tsquery.
+        // ts_rank retourne un score flottant entre 0 et 1 selon la fréquence et position des termes.
+        var sql = $"""
+            SELECT dc.id, dc.document_id, dc.content, dc.chunk_index, dc.page_number,
+                   dc.section_title, dc.embedding_dimensions, dc.created_at,
+                   ts_rank(to_tsvector('french', dc.content), plainto_tsquery('french', @query))::float8 AS score
+            FROM document_chunks dc
+            WHERE to_tsvector('french', dc.content) @@ plainto_tsquery('french', @query)
+            {documentFilter}
+            ORDER BY score DESC
+            LIMIT @topK
+            """;
+
+        var parameters = new List<object>
+        {
+            new NpgsqlParameter("query", query),
+            new NpgsqlParameter("topK", topK)
+        };
+
+        if (documentIds?.Length > 0)
+            parameters.Add(new NpgsqlParameter("docIds", documentIds));
+
+        var results = new List<(DocumentChunk, double)>();
+
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = sql;
+        foreach (var p in parameters) command.Parameters.Add(p);
+
+        await context.Database.OpenConnectionAsync(ct);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+
+        while (await reader.ReadAsync(ct))
+        {
+            var chunk = DocumentChunk.Create(
+                documentId: reader.GetGuid(1),
+                content: reader.GetString(2),
+                chunkIndex: reader.GetInt32(3),
+                embeddingDimensions: reader.GetInt32(6),
+                pageNumber: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                sectionTitle: reader.IsDBNull(5) ? null : reader.GetString(5));
+
+            results.Add((chunk, reader.GetDouble(8)));
+        }
+
+        return results;
+    }
+
+    /// <inheritdoc/>
     public async Task UpsertAsync(DocumentChunk chunk, float[] embedding, CancellationToken ct = default)
     {
         var sql = """

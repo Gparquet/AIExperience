@@ -29,6 +29,13 @@ public enum RagStrategy
     /// Adaptatif : analyse automatiquement la complexité de la question et choisit
     /// la stratégie la plus appropriée (Direct, HyDE ou Fusion).
     /// </summary>
-    Adaptive
+    Adaptive,
+
+    /// <summary>
+    /// Recherche full-text classique : utilise <c>plainto_tsquery</c> PostgreSQL sur le contenu des chunks.
+    /// Aucun LLM impliqué — retourne les chunks bruts triés par rang textuel.
+    /// Utile pour comparer l'approche classique versus sémantique lors de démonstrations.
+    /// </summary>
+    FullText
 }
 

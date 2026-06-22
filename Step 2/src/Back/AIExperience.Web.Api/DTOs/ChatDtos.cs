@@ -5,7 +5,12 @@ namespace AIExperience.Web.Api.DTOs;
 public record AskQuestionRequest(
     string Question,
     List<Guid> DocumentIds,
-    RagStrategy Strategy = RagStrategy.HyDE);
+    RagStrategy Strategy = RagStrategy.HyDE,
+    /// <summary>
+    /// Quand <c>false</c>, le pipeline utilise la recherche full-text PostgreSQL sans LLM.
+    /// Permet de comparer l'approche classique versus RAG lors d'une démonstration.
+    /// </summary>
+    bool UseLlm = true);
 
 public record CitationResponse(
     string DocumentName,
