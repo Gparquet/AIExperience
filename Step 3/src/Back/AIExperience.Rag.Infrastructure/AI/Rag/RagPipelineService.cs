@@ -90,9 +90,13 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             // 6. Construction des citations depuis les chunks reclassés
             var citations = rankedChunks.Select(r => Citation.Create(
                 Guid.Empty, r.Chunk.DocumentId,
-                $"Document {r.Chunk.DocumentId}",
-                r.Chunk.Content[..Math.Min(200, r.Chunk.Content.Length)],
-                r.Score, r.Chunk.PageNumber)).ToList();
+                r.Chunk.DocumentName ?? r.Chunk.DocumentId.ToString(),
+                r.Chunk.Content[..Math.Min(350, r.Chunk.Content.Length)],
+                r.Score, r.Chunk.PageNumber,
+                sectionTitle: r.Chunk.SectionTitle,
+                chunkIndex: r.Chunk.ChunkIndex,
+                startTime: r.Chunk.StartTime,
+                endTime: r.Chunk.EndTime)).ToList();
 
             return new RagResponse
             {
@@ -181,9 +185,13 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             // 7. Citations + réponse finale (événement done)
             var citations = rankedChunks.Select(r => Citation.Create(
                 Guid.Empty, r.Chunk.DocumentId,
-                $"Document {r.Chunk.DocumentId}",
-                r.Chunk.Content[..Math.Min(200, r.Chunk.Content.Length)],
-                r.Score, r.Chunk.PageNumber)).ToList();
+                r.Chunk.DocumentName ?? r.Chunk.DocumentId.ToString(),
+                r.Chunk.Content[..Math.Min(350, r.Chunk.Content.Length)],
+                r.Score, r.Chunk.PageNumber,
+                sectionTitle: r.Chunk.SectionTitle,
+                chunkIndex: r.Chunk.ChunkIndex,
+                startTime: r.Chunk.StartTime,
+                endTime: r.Chunk.EndTime)).ToList();
 
             yield return new RagStreamChunk
             {
@@ -302,9 +310,13 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
 
             var citations = chunks.Select(r => Citation.Create(
                 Guid.Empty, r.Chunk.DocumentId,
-                $"Document {r.Chunk.DocumentId}",
-                r.Chunk.Content[..Math.Min(300, r.Chunk.Content.Length)],
-                r.Score, r.Chunk.PageNumber)).ToList();
+                r.Chunk.DocumentName ?? r.Chunk.DocumentId.ToString(),
+                r.Chunk.Content[..Math.Min(350, r.Chunk.Content.Length)],
+                r.Score, r.Chunk.PageNumber,
+                sectionTitle: r.Chunk.SectionTitle,
+                chunkIndex: r.Chunk.ChunkIndex,
+                startTime: r.Chunk.StartTime,
+                endTime: r.Chunk.EndTime)).ToList();
 
             sw.Stop();
             return new RagResponse
@@ -348,14 +360,17 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                     // Inclut la question originale pour garantir la couverture de base
                     var allQueries = variants.Prepend(query.Question).Distinct().ToList();
 
-                    var searchTasks = allQueries.Select(async q =>
+                    // Recherches séquentielles : Npgsql ne supporte pas plusieurs DataReaders
+                    // simultanés sur la même connexion (AppDbContext Scoped = même connexion).
+                    // Task.WhenAll provoquerait une InvalidOperationException silencieuse.
+                    var allResults = new List<IReadOnlyList<(DocumentChunk, double)>>();
+                    foreach (var q in allQueries)
                     {
                         var vector = await embeddingService.EmbedAsync(q, ct);
-                        return await vectorStoreService.SearchAsync(
+                        var result = await vectorStoreService.SearchAsync(
                             vector, opts.Retrieval.TopK, docIds, opts.Retrieval.ScoreThreshold, ct);
-                    });
-
-                    var allResults = await Task.WhenAll(searchTasks);
+                        allResults.Add(result);
+                    }
 
                     // Fusion des listes via Reciprocal Rank Fusion
                     return ReciprocalRankFusion.Fuse(allResults);

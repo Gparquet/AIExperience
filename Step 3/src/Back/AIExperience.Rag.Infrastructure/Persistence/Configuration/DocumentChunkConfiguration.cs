@@ -54,6 +54,18 @@ public sealed class DocumentChunkConfiguration : IEntityTypeConfiguration<Docume
             .HasColumnType("vector(768)")
             .HasConversion(vectorConverter);
 
+        builder.Property(c => c.StartTime)
+            .HasColumnName("start_time_seconds")
+            .HasConversion(
+                v => v.HasValue ? v.Value.TotalSeconds : (double?)null,
+                v => v.HasValue ? TimeSpan.FromSeconds(v.Value) : null);
+
+        builder.Property(c => c.EndTime)
+            .HasColumnName("end_time_seconds")
+            .HasConversion(
+                v => v.HasValue ? v.Value.TotalSeconds : (double?)null,
+                v => v.HasValue ? TimeSpan.FromSeconds(v.Value) : null);
+
         builder.HasIndex(c => c.DocumentId);
         builder.HasIndex(c => c.ChunkIndex);
 

@@ -39,8 +39,13 @@ public sealed class LlmRerankerService(
                     new ChatOptions { MaxOutputTokens = 5, Temperature = 0 },
                     ct);
 
-                // Le LLM retourne un entier 0-10, normalisé en 0.0-1.0
-                if (int.TryParse(response.Text.Trim(), out var score))
+                // Le LLM retourne un entier 0-10, normalisé en 0.0-1.0.
+                // Extraction robuste : les petits modèles ajoutent souvent du texte autour du chiffre
+                // (ex. "Score: 7", "7/10", "7.") — on extrait le premier entier valide.
+                var firstDigit = System.Text.RegularExpressions.Regex.Match(
+                    response.Text, @"\b([0-9]|10)\b");
+
+                if (firstDigit.Success && int.TryParse(firstDigit.Value, out var score))
                     scored.Add((chunk, score / 10.0));
                 else
                 {
