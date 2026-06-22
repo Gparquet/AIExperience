@@ -40,4 +40,20 @@ public static class RagPrompts
         ---
         Question : {question}
         """;
+
+    /// <summary>
+    /// Prompt système pour le mode LLM direct (sans contexte RAG).
+    /// Le LLM répond uniquement depuis ses connaissances générales.
+    /// </summary>
+    public const string DirectLlmSystem = """
+        Tu es un assistant expert dans le voyage.
+        Réponds à la question en utilisant tes connaissances générales.
+        Sois précis, structuré et professionnel.
+        Réponds en français.
+        """;
+
+    /// <summary>
+    /// Template du prompt utilisateur pour le mode LLM direct.
+    /// </summary>
+    public const string DirectLlmUser = "Question : {question}";
 }

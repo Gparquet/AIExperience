@@ -24,7 +24,8 @@ public class ChatController(IRagPipelineService ragPipelineService) : Controller
             Question = request.Question,
             DocumentIds = request.DocumentIds,
             Strategy = request.Strategy,
-            UseLlm = request.UseLlm
+            UseLlm = request.UseLlm,
+            UseRag = request.UseRag
         }, cancellationToken);
 
         var citations = ragResponse.Citations

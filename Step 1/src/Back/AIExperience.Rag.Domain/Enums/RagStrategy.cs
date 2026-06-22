@@ -36,6 +36,12 @@ public enum RagStrategy
     /// Aucun LLM impliqué — retourne les chunks bruts triés par rang textuel.
     /// Utile pour comparer l'approche classique versus sémantique lors de démonstrations.
     /// </summary>
-    FullText
+    FullText,
+
+    /// <summary>
+    /// LLM direct sans RAG : la question est envoyée directement au LLM sans récupération de documents.
+    /// Permet de comparer la réponse du LLM seul versus RAG+LLM lors de démonstrations.
+    /// </summary>
+    DirectLlm
 }
 

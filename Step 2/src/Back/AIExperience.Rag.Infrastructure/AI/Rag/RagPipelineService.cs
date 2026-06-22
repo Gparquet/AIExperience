@@ -46,6 +46,10 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             if (!query.UseLlm)
                 return await AskFullTextAsync(query, ragOptions, sw, ct);
 
+            // Mode LLM direct sans RAG : aucune récupération documentaire, appel direct au LLM.
+            if (!query.UseRag)
+                return await AskDirectLlmAsync(query, sw, ct);
+
             // 1. Résolution de la stratégie
             var strategy = query.Strategy == RagStrategy.Adaptive
                 ? await adaptiveQueryRouter.GetRagStrategyAsync(query.Question, ct)
@@ -116,6 +120,14 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 yield break;
             }
 
+            // Mode LLM direct sans RAG : streaming direct sans récupération documentaire.
+            if (!query.UseRag)
+            {
+                await foreach (var chunk in StreamDirectLlmAsync(query, sw, ct))
+                    yield return chunk;
+                yield break;
+            }
+
             // 1. Résolution de la stratégie
             var strategy = query.Strategy == RagStrategy.Adaptive
                 ? await adaptiveQueryRouter.GetRagStrategyAsync(query.Question, ct)
@@ -181,6 +193,93 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                     Answer = totalText.ToString(),
                     Citations = citations,
                     StrategyUsed = strategy,
+                    TotalTokens = 0,
+                    DurationMs = sw.ElapsedMilliseconds
+                }
+            };
+        }
+
+        /// <summary>
+        /// Appelle le LLM directement sans aucune récupération documentaire.
+        /// Utilisé pour la démonstration "LLM sans RAG" — le modèle répond depuis ses connaissances générales.
+        /// </summary>
+        private async Task<RagResponse> AskDirectLlmAsync(RagQuery query, Stopwatch sw, CancellationToken ct)
+        {
+            var chatHistory = new ChatHistory(RagPrompts.DirectLlmSystem);
+
+            if (query.IncludeHistory && query.SessionId != Guid.Empty)
+            {
+                var pastMessages = await conversationRepository.GetMessagesAsync(query.SessionId, query.MaxHistoryTurns, ct);
+                foreach (var msg in pastMessages)
+                {
+                    if (msg.Role == MessageRole.User) chatHistory.AddUserMessage(msg.Content);
+                    else if (msg.Role == MessageRole.Assistant) chatHistory.AddAssistantMessage(msg.Content);
+                }
+            }
+
+            chatHistory.AddUserMessage(RagPrompts.DirectLlmUser.Replace("{question}", query.Question));
+
+            var messages = chatHistory.Select(m => new Microsoft.Extensions.AI.ChatMessage(
+                m.Role == AuthorRole.User ? ChatRole.User : ChatRole.Assistant, m.Content)).ToList();
+
+            var completionResult = await chatClient.GetResponseAsync(messages,
+                new ChatOptions { MaxOutputTokens = 2000, Temperature = 0.7f }, ct);
+
+            sw.Stop();
+            return new RagResponse
+            {
+                Answer = string.Join("\n", completionResult.Messages.Select(c => c.Text)) ?? string.Empty,
+                Citations = [],
+                StrategyUsed = RagStrategy.DirectLlm,
+                TotalTokens = (int)(completionResult.Usage?.TotalTokenCount ?? 0),
+                DurationMs = sw.ElapsedMilliseconds
+            };
+        }
+
+        /// <summary>
+        /// Streaming LLM direct sans RAG — même logique que <see cref="AskDirectLlmAsync"/> mais en mode streaming.
+        /// </summary>
+        private async IAsyncEnumerable<RagStreamChunk> StreamDirectLlmAsync(
+            RagQuery query, Stopwatch sw, [EnumeratorCancellation] CancellationToken ct)
+        {
+            var chatHistory = new ChatHistory(RagPrompts.DirectLlmSystem);
+
+            if (query.IncludeHistory && query.SessionId != Guid.Empty)
+            {
+                var pastMessages = await conversationRepository.GetMessagesAsync(query.SessionId, query.MaxHistoryTurns, ct);
+                foreach (var msg in pastMessages)
+                {
+                    if (msg.Role == MessageRole.User) chatHistory.AddUserMessage(msg.Content);
+                    else if (msg.Role == MessageRole.Assistant) chatHistory.AddAssistantMessage(msg.Content);
+                }
+            }
+
+            chatHistory.AddUserMessage(RagPrompts.DirectLlmUser.Replace("{question}", query.Question));
+
+            var messages = chatHistory.Select(m => new Microsoft.Extensions.AI.ChatMessage(
+                m.Role == AuthorRole.User ? ChatRole.User : ChatRole.Assistant, m.Content)).ToList();
+
+            var totalText = new StringBuilder();
+            await foreach (var update in chatClient.GetStreamingResponseAsync(
+                messages, new ChatOptions { MaxOutputTokens = 2000, Temperature = 0.7f }, ct))
+            {
+                var token = update.Text;
+                if (!string.IsNullOrEmpty(token))
+                {
+                    totalText.Append(token);
+                    yield return new RagStreamChunk { Token = token };
+                }
+            }
+
+            sw.Stop();
+            yield return new RagStreamChunk
+            {
+                IsDone = true,
+                FinalResponse = new RagResponse
+                {
+                    Answer = totalText.ToString(),
+                    Citations = [],
+                    StrategyUsed = RagStrategy.DirectLlm,
                     TotalTokens = 0,
                     DurationMs = sw.ElapsedMilliseconds
                 }

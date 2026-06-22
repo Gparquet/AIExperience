@@ -29,6 +29,13 @@ public sealed record RagQuery
     /// </summary>
     public bool UseLlm { get; init; } = true;
 
+    /// <summary>
+    /// Indique si la récupération vectorielle doit être effectuée avant l'appel au LLM.
+    /// Quand <c>false</c> et <c>UseLlm = true</c>, la question est envoyée directement au LLM sans contexte documentaire.
+    /// Permet de comparer la réponse du LLM seul versus RAG+LLM lors de démonstrations.
+    /// </summary>
+    public bool UseRag { get; init; } = true;
+
     /// <summary>Indique si l'historique de conversation doit être injecté dans le prompt.</summary>
     public bool IncludeHistory { get; init; } = true;
 
