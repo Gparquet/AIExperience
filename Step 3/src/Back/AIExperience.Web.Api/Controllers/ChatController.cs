@@ -1,5 +1,6 @@
 using AIExperience.Rag.Domain.Interfaces.Services.AI;
 using AIExperience.Rag.Domain.Models;
+using AIExperience.Rag.Infrastructure.AI.Rag.PromptTemplates;
 using AIExperience.Web.Api.DTOs;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
@@ -11,6 +12,11 @@ namespace AIExperience.Web.Api.Controllers;
 [Route("api/[controller]")]
 public class ChatController(IRagPipelineService ragPipelineService) : ControllerBase
 {
+    /// <summary>Retourne les prompts système par défaut — le front-end les charge au démarrage pour éviter toute duplication.</summary>
+    [HttpGet("system-prompts")]
+    public ActionResult<SystemPromptsResponse> GetSystemPrompts() =>
+        Ok(new SystemPromptsResponse(RagPrompts.RagSystem, RagPrompts.DirectLlmSystem));
+
     [HttpPost("ask")]
     public async Task<ActionResult<AskQuestionResponse>> Ask(
         [FromBody] AskQuestionRequest request,
@@ -25,7 +31,8 @@ public class ChatController(IRagPipelineService ragPipelineService) : Controller
             DocumentIds = request.DocumentIds,
             Strategy = request.Strategy,
             UseLlm = request.UseLlm,
-            UseRag = request.UseRag
+            UseRag = request.UseRag,
+            SystemPrompt = string.IsNullOrWhiteSpace(request.SystemPrompt) ? null : request.SystemPrompt
         }, cancellationToken);
 
         var citations = ragResponse.Citations
@@ -64,7 +71,9 @@ public class ChatController(IRagPipelineService ragPipelineService) : Controller
                 Question = request.Question,
                 DocumentIds = request.DocumentIds,
                 Strategy = request.Strategy,
-                UseLlm = request.UseLlm
+                UseLlm = request.UseLlm,
+                UseRag = request.UseRag,
+                SystemPrompt = string.IsNullOrWhiteSpace(request.SystemPrompt) ? null : request.SystemPrompt
             }, cancellationToken))
             {
                 if (chunk.IsDone && chunk.FinalResponse is { } final)

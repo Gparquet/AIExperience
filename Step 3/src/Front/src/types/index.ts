@@ -22,6 +22,13 @@ export interface AskQuestionRequest {
   useLlm?: boolean;
   /** Quand false et useLlm=true : question envoyée directement au LLM sans récupération documentaire. */
   useRag?: boolean;
+  /** Prompt système personnalisé. Si absent, le back-end utilise le prompt par défaut. */
+  systemPrompt?: string;
+}
+
+export interface SystemPromptsResponse {
+  rag: string;
+  directLlm: string;
 }
 
 export interface AskQuestionResponse {

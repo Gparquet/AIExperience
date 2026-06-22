@@ -15,7 +15,15 @@ public record AskQuestionRequest(
     /// Quand <c>false</c> et <c>UseLlm = true</c>, la question est envoyée directement au LLM sans récupération documentaire.
     /// Permet de comparer la réponse du LLM seul versus RAG+LLM lors d'une démonstration.
     /// </summary>
-    bool UseRag = true);
+    bool UseRag = true,
+    /// <summary>
+    /// Prompt système personnalisé transmis par le client.
+    /// Si <c>null</c> ou vide, le pipeline utilise le prompt par défaut défini dans <c>RagPrompts</c>.
+    /// </summary>
+    string? SystemPrompt = null);
+
+/// <summary>Prompts système par défaut exposés au front-end pour éviter toute duplication.</summary>
+public record SystemPromptsResponse(string Rag, string DirectLlm);
 
 public record CitationResponse(
     string DocumentName,

@@ -1,4 +1,4 @@
-import type { AskQuestionRequest, AskQuestionResponse, DocumentResponse, StreamEvent, TranscribeVideoResponse } from '../types';
+import type { AskQuestionRequest, AskQuestionResponse, DocumentResponse, StreamEvent, SystemPromptsResponse, TranscribeVideoResponse } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -48,6 +48,8 @@ export const api = {
     },
   },
   chat: {
+    getSystemPrompts: () => request<SystemPromptsResponse>('/api/chat/system-prompts'),
+
     ask: (payload: AskQuestionRequest) =>
       request<AskQuestionResponse>('/api/chat/ask', {
         method: 'POST',

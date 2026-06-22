@@ -7,6 +7,7 @@ import type { CitationResponse, DocumentResponse } from '../types';
 /** Les 3 modes de démonstration disponibles dans l'interface. */
 type Mode = 'classic' | 'llm' | 'rag';
 
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -58,11 +59,27 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const streamingRef = useRef('');
 
+  // Prompts système éditables par mode — chargés depuis le back-end (source de vérité unique)
+  const [systemPrompts, setSystemPrompts] = useState<Record<'llm' | 'rag', string>>({ llm: '', rag: '' });
+  const [defaultSystemPrompts, setDefaultSystemPrompts] = useState<Record<'llm' | 'rag', string>>({ llm: '', rag: '' });
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+
   // Chargement de la liste des documents pour le sélecteur
   useEffect(() => {
     api.documents.list()
       .then(docs => setDocuments(docs.filter(d => d.status === 'Completed')))
       .catch(() => { /* sélecteur non bloquant */ });
+  }, []);
+
+  // Chargement des prompts système par défaut depuis le back-end (source de vérité unique)
+  useEffect(() => {
+    api.chat.getSystemPrompts()
+      .then(prompts => {
+        const defaults = { rag: prompts.rag, llm: prompts.directLlm };
+        setDefaultSystemPrompts(defaults);
+        setSystemPrompts(defaults);
+      })
+      .catch(() => { /* panneau reste vide si l'API est indisponible */ });
   }, []);
 
   useEffect(() => {
@@ -100,8 +117,11 @@ export default function ChatPage() {
     // Filtre : tableau avec l'id ciblé, ou vide pour recherche globale
     const documentIds = filteredDocumentId ? [filteredDocumentId] : [];
 
+    // Prompt système : envoyé uniquement pour les modes LLM (pas pour la recherche full-text)
+    const systemPrompt = useLlm ? systemPrompts[mode as 'llm' | 'rag'] : undefined;
+
     try {
-      for await (const event of api.chat.askStream({ question: q, documentIds, useLlm, useRag })) {
+      for await (const event of api.chat.askStream({ question: q, documentIds, useLlm, useRag, systemPrompt })) {
         if (event.event === 'token') {
           streamingRef.current += event.data.token;
           flushSync(() => {
@@ -163,6 +183,50 @@ export default function ChatPage() {
           {MODE_LABELS.rag}
         </button>
       </div>
+
+      {/* Bouton d'accès à l'éditeur de prompt système */}
+      {mode !== 'classic' && (
+        <div className="system-prompt-toggle">
+          <button
+            className={`btn btn-ghost btn-sm system-prompt-btn ${showSystemPrompt ? 'system-prompt-btn-active' : ''}`}
+            onClick={() => setShowSystemPrompt(v => !v)}
+            disabled={loading}
+            title="Modifier le prompt système envoyé au LLM"
+          >
+            ⚙️ Prompt système {showSystemPrompt ? '▲' : '▼'}
+          </button>
+        </div>
+      )}
+
+      {/* Panneau d'édition du prompt système — visible uniquement pour les modes LLM */}
+      {showSystemPrompt && mode !== 'classic' && (
+        <div className="system-prompt-panel">
+          <div className="system-prompt-header">
+            <span className="system-prompt-label">
+              Prompt système — mode {mode === 'rag' ? 'RAG + LLM' : 'LLM direct'}
+            </span>
+            <button
+              className="btn btn-ghost btn-xs"
+              onClick={() => setSystemPrompts(prev => ({
+                ...prev,
+                [mode]: defaultSystemPrompts[mode as 'llm' | 'rag'],
+              }))}
+              disabled={loading}
+              title="Remettre le prompt par défaut"
+            >
+              ↺ Réinitialiser
+            </button>
+          </div>
+          <textarea
+            className="system-prompt-textarea"
+            value={systemPrompts[mode as 'llm' | 'rag']}
+            onChange={e => setSystemPrompts(prev => ({ ...prev, [mode]: e.target.value }))}
+            disabled={loading}
+            rows={6}
+            spellCheck={false}
+          />
+        </div>
+      )}
 
       {/* Sélecteur de document — permet de cibler un document ou de rechercher globalement */}
       <div className="chat-filter-bar">

@@ -375,6 +375,61 @@ body { min-height: 100vh; }
   margin: 0 4px;
 }
 
+/* ── Éditeur de prompt système ──────────────────────────────────────── */
+.system-prompt-toggle {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 24px 4px;
+}
+
+.system-prompt-btn {
+  font-size: 12px;
+  color: var(--color-muted);
+  border: 1px solid transparent;
+}
+.system-prompt-btn:hover { color: var(--color-text); border-color: var(--color-border); }
+.system-prompt-btn-active { color: var(--color-primary); border-color: var(--color-primary); background: #ede9fe; }
+
+.system-prompt-panel {
+  margin: 0 24px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: #f8f7ff;
+  overflow: hidden;
+}
+
+.system-prompt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: #ede9fe;
+}
+
+.system-prompt-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.system-prompt-textarea {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: vertical;
+}
+.system-prompt-textarea:disabled { opacity: .6; cursor: not-allowed; }
+
 /* ── Search results (mode sans LLM) ────────────────────────────────── */
 .search-results {
   max-width: 80%;

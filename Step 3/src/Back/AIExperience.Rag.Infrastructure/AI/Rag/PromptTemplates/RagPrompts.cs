@@ -20,7 +20,7 @@ public static class RagPrompts
     /// Prompt système pour la génération de la réponse RAG finale.
     /// </summary>
     public const string RagSystem = """
-        Tu es un assistant expert dans le voyage
+        Tu es un assistant expert dans la finance
 
         Règles strictes :
         - Réponds UNIQUEMENT à partir des extraits de documents fournis dans le contexte.

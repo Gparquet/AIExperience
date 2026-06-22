@@ -205,7 +205,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
         /// </summary>
         private async Task<RagResponse> AskDirectLlmAsync(RagQuery query, Stopwatch sw, CancellationToken ct)
         {
-            var chatHistory = new ChatHistory(RagPrompts.DirectLlmSystem);
+            var chatHistory = new ChatHistory(query.SystemPrompt ?? RagPrompts.DirectLlmSystem);
 
             if (query.IncludeHistory && query.SessionId != Guid.Empty)
             {
@@ -242,7 +242,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
         private async IAsyncEnumerable<RagStreamChunk> StreamDirectLlmAsync(
             RagQuery query, Stopwatch sw, [EnumeratorCancellation] CancellationToken ct)
         {
-            var chatHistory = new ChatHistory(RagPrompts.DirectLlmSystem);
+            var chatHistory = new ChatHistory(query.SystemPrompt ?? RagPrompts.DirectLlmSystem);
 
             if (query.IncludeHistory && query.SessionId != Guid.Empty)
             {
@@ -379,7 +379,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             IReadOnlyList<DocumentChunk> contextChunks,
             CancellationToken ct)
         {
-            var chatHistory = new ChatHistory(RagPrompts.RagSystem);
+            var chatHistory = new ChatHistory(query.SystemPrompt ?? RagPrompts.RagSystem);
 
             // Injection de l'historique de conversation multi-tour
             if (query.IncludeHistory && query.SessionId != Guid.Empty)

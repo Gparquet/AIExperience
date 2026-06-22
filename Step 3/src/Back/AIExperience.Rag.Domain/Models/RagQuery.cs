@@ -36,6 +36,12 @@ public sealed record RagQuery
     /// </summary>
     public bool UseRag { get; init; } = true;
 
+    /// <summary>
+    /// Prompt système personnalisé à transmettre au LLM.
+    /// Si <c>null</c>, le pipeline utilise le prompt par défaut défini dans <c>RagPrompts</c>.
+    /// </summary>
+    public string? SystemPrompt { get; init; }
+
     /// <summary>Indique si l'historique de conversation doit être injecté dans le prompt.</summary>
     public bool IncludeHistory { get; init; } = true;
 
