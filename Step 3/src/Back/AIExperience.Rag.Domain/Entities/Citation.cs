@@ -1,4 +1,6 @@
-﻿namespace AIExperience.Rag.Domain.Entities;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace AIExperience.Rag.Domain.Entities;
 
 /// <summary>
 /// Représente une citation d'une source utilisée pour générer une réponse RAG.
@@ -27,6 +29,32 @@ public sealed record Citation
     /// <summary>Score de similarité cosinus entre la question et ce chunk (entre 0 et 1).</summary>
     public double Score { get; private set; }
 
+    /// <summary>
+    /// Titre de la section du document source — non persisté, renseigné à la volée depuis le chunk.
+    /// </summary>
+    [NotMapped]
+    public string? SectionTitle { get; private set; }
+
+    /// <summary>
+    /// Position ordinale du chunk dans le document — non persisté, utile pour le débogage et l'affichage.
+    /// </summary>
+    [NotMapped]
+    public int ChunkIndex { get; private set; }
+
+    /// <summary>
+    /// Début du chunk dans la vidéo source — non persisté, propagé depuis DocumentChunk.
+    /// Null pour les documents non-vidéo.
+    /// </summary>
+    [NotMapped]
+    public TimeSpan? StartTime { get; private set; }
+
+    /// <summary>
+    /// Fin du chunk dans la vidéo source — non persisté, propagé depuis DocumentChunk.
+    /// Null pour les documents non-vidéo.
+    /// </summary>
+    [NotMapped]
+    public TimeSpan? EndTime { get; private set; }
+
     /// <summary>Navigation vers le message parent.</summary>
     public ChatMessage Message { get; private set; } = null!;
 
@@ -41,13 +69,21 @@ public sealed record Citation
     /// <param name="excerpt">Extrait textuel utilisé comme contexte.</param>
     /// <param name="score">Score de similarité cosinus.</param>
     /// <param name="pageNumber">Numéro de page (optionnel).</param>
+    /// <param name="sectionTitle">Titre de la section source (optionnel, non persisté).</param>
+    /// <param name="chunkIndex">Position ordinale du chunk (non persisté).</param>
+    /// <param name="startTime">Début du chunk dans la vidéo (optionnel, non persisté).</param>
+    /// <param name="endTime">Fin du chunk dans la vidéo (optionnel, non persisté).</param>
     public static Citation Create(
         Guid messageId,
         Guid documentId,
         string documentName,
         string excerpt,
         double score,
-        int? pageNumber = null)
+        int? pageNumber = null,
+        string? sectionTitle = null,
+        int chunkIndex = 0,
+        TimeSpan? startTime = null,
+        TimeSpan? endTime = null)
     {
         return new Citation
         {
@@ -56,7 +92,11 @@ public sealed record Citation
             DocumentName = documentName,
             Excerpt = excerpt,
             Score = score,
-            PageNumber = pageNumber
+            PageNumber = pageNumber,
+            SectionTitle = sectionTitle,
+            ChunkIndex = chunkIndex,
+            StartTime = startTime,
+            EndTime = endTime
         };
     }
 }

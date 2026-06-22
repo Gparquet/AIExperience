@@ -48,6 +48,16 @@ namespace AIExperience.Rag.Domain.Interfaces.Services
         Task UpsertAsync(DocumentChunk chunk, float[] embedding, CancellationToken ct = default);
 
         /// <summary>
+        /// Persiste plusieurs chunks et leurs embeddings en une seule transaction PostgreSQL.
+        /// Équivalent à N appels <see cref="UpsertAsync"/> mais avec un seul commit — ~5-10× plus rapide.
+        /// </summary>
+        /// <param name="items">Liste de tuples (chunk, embedding) à insérer.</param>
+        /// <param name="ct">Jeton d'annulation.</param>
+        Task UpsertBatchAsync(
+            IReadOnlyList<(DocumentChunk Chunk, float[] Embedding)> items,
+            CancellationToken ct = default);
+
+        /// <summary>
         /// Supprime tous les embeddings associés à un document (lors de la suppression du document).
         /// </summary>
         /// <param name="documentId">Identifiant du document dont supprimer les vecteurs.</param>

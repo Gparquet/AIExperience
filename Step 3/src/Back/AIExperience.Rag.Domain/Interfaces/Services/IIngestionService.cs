@@ -1,4 +1,5 @@
-﻿using AIExperience.Rag.Domain.Enums;
+using AIExperience.Rag.Domain.Enums;
+using AIExperience.Rag.Domain.Models.Video;
 
 namespace AIExperience.Rag.Domain.Interfaces.Services;
 
@@ -12,7 +13,7 @@ public interface IIngestionService
     /// <summary>
     /// Ingère un document : parsing → chunking → embedding → stockage dans pgvector.
     /// </summary>
-    /// <param name="filePath">Flux du fichier à ingérer.</param>
+    /// <param name="filePath">Chemin du fichier à ingérer.</param>
     /// <param name="documentId">Identifiant du document en base de données.</param>
     /// <param name="metadata">Métadonnées du document (titre, auteur, nb pages...).</param>
     /// <param name="strategy">Stratégie de chunking à appliquer.</param>
@@ -26,7 +27,7 @@ public interface IIngestionService
 
     /// <summary>
     /// Ingère un texte déjà extrait (ex: transcription vidéo) sans passer par le parsing de fichier.
-    /// Pipeline : chunking → embedding → stockage pgvector.
+    /// Pipeline : chunking par caractères → embedding → stockage pgvector.
     /// </summary>
     /// <param name="text">Texte brut à ingérer.</param>
     /// <param name="documentId">Identifiant du document déjà créé en base de données.</param>
@@ -34,6 +35,21 @@ public interface IIngestionService
     /// <param name="ct">Jeton d'annulation.</param>
     Task IngestTextAsync(
         string text,
+        Guid documentId,
+        DocumentMetadata metadata,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Ingère une transcription vidéo depuis les segments Whisper bruts.
+    /// Utilise le chunking temporel (<see cref="ITemporalChunker"/>) pour préserver les timestamps.
+    /// Pipeline : chunking temporel → embedding → stockage pgvector (avec StartTime/EndTime).
+    /// </summary>
+    /// <param name="segments">Segments Whisper ordonnés avec timestamps.</param>
+    /// <param name="documentId">Identifiant du document déjà créé en base.</param>
+    /// <param name="metadata">Métadonnées du document.</param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    Task IngestFromSegmentsAsync(
+        IReadOnlyList<TranscriptionSegment> segments,
         Guid documentId,
         DocumentMetadata metadata,
         CancellationToken ct = default);
