@@ -36,7 +36,8 @@ public class ChatController(IRagPipelineService ragPipelineService) : Controller
         }, cancellationToken);
 
         var citations = ragResponse.Citations
-            .Select(c => new CitationResponse(c.DocumentName, c.PageNumber, c.Excerpt, c.Score))
+            .Select(c => new CitationResponse(c.DocumentName, c.PageNumber, c.Excerpt, c.Score, c.SectionTitle, c.ChunkIndex,
+                c.StartTime?.TotalSeconds, c.EndTime?.TotalSeconds))
             .ToList();
 
         return Ok(new AskQuestionResponse(
@@ -93,7 +94,8 @@ public class ChatController(IRagPipelineService ragPipelineService) : Controller
     private AskQuestionResponse BuildResponse(RagResponse r)
     {
         var citations = r.Citations
-            .Select(c => new CitationResponse(c.DocumentName, c.PageNumber, c.Excerpt, c.Score))
+            .Select(c => new CitationResponse(c.DocumentName, c.PageNumber, c.Excerpt, c.Score, c.SectionTitle, c.ChunkIndex,
+                c.StartTime?.TotalSeconds, c.EndTime?.TotalSeconds))
             .ToList();
         return new AskQuestionResponse(r.Answer, citations, r.StrategyUsed.ToString(), r.TotalTokens, r.DurationMs);
     }

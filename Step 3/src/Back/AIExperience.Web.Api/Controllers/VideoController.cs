@@ -18,7 +18,7 @@ public class VideoController(ISender sender) : ControllerBase
     /// </summary>
     /// <param name="file">Fichier vidéo (.mp4, .mkv, .webm, .avi, .mov) ou audio (.wav, .mp3, .m4a).</param>
     /// <param name="language">Code langue ISO pour la transcription (défaut : "fr").</param>
-    /// <param name="cleanWithLlm">Nettoyer la transcription brute via le LLM local (défaut : true).</param>
+    /// <param name="cleanWithLlm">Nettoyer la transcription brute via le LLM local (défaut : false). Non utilisé pour l'ingestion RAG — enrichit uniquement la réponse affichée.</param>
     /// <param name="autoIngest">Injecter automatiquement dans le pipeline RAG (défaut : true).</param>
     /// <param name="title">Titre du document dans le RAG (défaut : nom du fichier).</param>
     [HttpPost("transcribe")]
@@ -27,7 +27,7 @@ public class VideoController(ISender sender) : ControllerBase
     public async Task<ActionResult<TranscribeVideoResponse>> Transcribe(
         IFormFile file,
         [FromQuery] string language = "fr",
-        [FromQuery] bool cleanWithLlm = true,
+        [FromQuery] bool cleanWithLlm = false,
         [FromQuery] bool autoIngest = true,
         [FromQuery] string? title = null,
         CancellationToken cancellationToken = default)

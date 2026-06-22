@@ -29,7 +29,15 @@ public record CitationResponse(
     string DocumentName,
     int? PageNumber,
     string Excerpt,
-    double Score);
+    double Score,
+    /// <summary>Titre de la section du document source (null si non disponible).</summary>
+    string? SectionTitle,
+    /// <summary>Position ordinale du chunk dans le document (0-based).</summary>
+    int ChunkIndex,
+    /// <summary>Début du chunk dans la vidéo source en secondes (null pour les documents non-vidéo).</summary>
+    double? StartTimeSeconds,
+    /// <summary>Fin du chunk dans la vidéo source en secondes (null pour les documents non-vidéo).</summary>
+    double? EndTimeSeconds);
 
 public record AskQuestionResponse(
     string Answer,
