@@ -1,12 +1,12 @@
-﻿using AIExperience.Rag.Application.Common.Behaviors;
+using AIExperience.Rag.Application.Common.Behaviors;
 using AIExperience.Rag.Application.Services;
 using AIExperience.Rag.Application.Services.TextExtractor;
 using AIExperience.Rag.Domain.Interfaces.Services;
+using AIExperience.Rag.Domain.Interfaces.Services.Video;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
-using AIExperience.Rag.Domain.Interfaces.Services.Video;
 
 namespace AIExperience.Rag.Application
 {
@@ -42,7 +42,10 @@ namespace AIExperience.Rag.Application
 
         public static IServiceCollection AddChunker(this IServiceCollection services)
         {
-            return services.AddScoped<ITextChunker, RecursiveChunker>();
+            services.AddScoped<ITextChunker, RecursiveChunker>();
+            // Singleton : TemporalChunker est sans état — peut être réutilisé en concurrence
+            services.AddSingleton<ITemporalChunker, TemporalChunker>();
+            return services;
         }
 
         public static IServiceCollection AddIngestion(this IServiceCollection services)

@@ -86,6 +86,14 @@ public sealed class TranscribeVideoHandler
             string? cleanedText = null;
             if (request.CleanWithLlm)
             {
+                // Le texte nettoyé n'est pas utilisé pour l'ingestion RAG (les timestamps seraient perdus).
+                // Il enrichit uniquement la réponse affichée — ne pas activer en production avec AutoIngest.
+                if (request.AutoIngest)
+                    _logger.LogWarning(
+                        "CleanWithLlm=true avec AutoIngest=true : le texte nettoyé ne sera PAS utilisé " +
+                        "pour l'ingestion (les segments bruts Whisper sont ingestés pour préserver les timestamps). " +
+                        "Ce nettoyage ajoute un délai inutile si vous n'affichez pas la transcription nettoyée.");
+
                 _logger.LogInformation("Nettoyage de la transcription via LLM local...");
                 cleanedText = await CleanTranscriptionAsync(result.FullText, cancellationToken);
             }
@@ -94,7 +102,6 @@ public sealed class TranscribeVideoHandler
             Guid? documentId = null;
             if (request.AutoIngest)
             {
-                var textToIngest = cleanedText ?? result.FullText;
                 var title = request.Title ?? Path.GetFileNameWithoutExtension(request.FilePath);
 
                 _logger.LogInformation("Création du document et injection dans le pipeline RAG : {Title}", title);
@@ -116,8 +123,9 @@ public sealed class TranscribeVideoHandler
                 await _documentRepository.AddAsync(document, cancellationToken);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-                // Ingérer le texte transcrit (sans re-parsing de fichier)
-                await _ingestionService.IngestTextAsync(textToIngest, document.Id, metadata, cancellationToken);
+                // Ingestion depuis les segments bruts Whisper pour préserver les timestamps temporels.
+                // Le texte nettoyé LLM (cleanedText) n'est pas utilisé ici : le nettoyage supprime les timestamps.
+                await _ingestionService.IngestFromSegmentsAsync(result.Segments, document.Id, metadata, cancellationToken);
 
                 document.MarkAsCompleted();
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
