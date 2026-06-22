@@ -323,8 +323,12 @@ body { min-height: 100vh; }
 
 .citations { margin-top: 10px; font-size: 13px; }
 .citations summary { cursor: pointer; color: var(--color-primary); font-weight: 500; }
-.citations ul { margin-top: 8px; padding-left: 16px; display: flex; flex-direction: column; gap: 6px; }
-.citations li { color: var(--color-text); }
+.citations ul { margin-top: 8px; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.citations li { color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 6px; padding: 8px 10px; }
+.citation-header { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.citation-header strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.citation-section { font-size: 11px; color: var(--color-primary); margin-bottom: 4px; font-style: italic; }
+.citation-excerpt { font-size: 12px; color: var(--color-muted); display: block; line-height: 1.5; }
 
 /* ── Typing indicator ───────────────────────────────────────────────── */
 .typing { display: flex; align-items: center; gap: 4px; padding: 14px 16px; }

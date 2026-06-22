@@ -328,7 +328,7 @@ export default function ChatPage() {
                 )}
               </div>
             ) : (
-              /* Affichage "RAG + LLM" — bulle avec citations */
+              /* Affichage "RAG + LLM" — bulle avec citations enrichies */
               <div className="message-bubble">
                 <p>{msg.content}</p>
                 {msg.citations && msg.citations.length > 0 && (
@@ -337,10 +337,19 @@ export default function ChatPage() {
                     <ul>
                       {msg.citations.map((c, j) => (
                         <li key={j}>
-                          <strong>{c.documentName}</strong>
-                          {c.pageNumber != null && ` · p.${c.pageNumber}`}
-                          {' · '}
-                          <em>{c.excerpt.slice(0, 120)}{c.excerpt.length > 120 ? '…' : ''}</em>
+                          <div className="citation-header">
+                            <strong>{c.documentName}</strong>
+                            {c.pageNumber != null && (
+                              <span className="search-result-page">p.{c.pageNumber}</span>
+                            )}
+                            <span className="search-result-score">
+                              {(c.score * 100).toFixed(1)} %
+                            </span>
+                          </div>
+                          {c.sectionTitle && (
+                            <div className="citation-section">{c.sectionTitle}</div>
+                          )}
+                          <em className="citation-excerpt">{c.excerpt}</em>
                         </li>
                       ))}
                     </ul>

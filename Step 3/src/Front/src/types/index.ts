@@ -12,6 +12,10 @@ export interface CitationResponse {
   pageNumber: number | null;
   excerpt: string;
   score: number;
+  /** Titre de la section du document source (null si non renseigné). */
+  sectionTitle?: string | null;
+  /** Position ordinale du chunk dans le document (0-based). */
+  chunkIndex?: number;
 }
 
 export interface AskQuestionRequest {
