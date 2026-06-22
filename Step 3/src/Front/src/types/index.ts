@@ -18,6 +18,10 @@ export interface AskQuestionRequest {
   question: string;
   documentIds: string[];
   strategy?: string;
+  /** Quand false : recherche full-text PostgreSQL sans LLM (mode démonstration). */
+  useLlm?: boolean;
+  /** Quand false et useLlm=true : question envoyée directement au LLM sans récupération documentaire. */
+  useRag?: boolean;
 }
 
 export interface AskQuestionResponse {
