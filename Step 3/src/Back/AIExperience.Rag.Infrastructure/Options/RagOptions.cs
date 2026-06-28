@@ -57,8 +57,14 @@ public sealed class RetrievalOptions
 /// <summary>Options pour le reranker cross-encoder.</summary>
 public sealed class RerankerOptions
 {
-    /// <summary>Active ou désactive le reranking. Par défaut : true.</summary>
-    public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// Active ou désactive le reranking. Par défaut : <c>false</c>.
+    /// Désactivé par défaut car le reranker LLM génère 1 appel par chunk (jusqu'à TopK=20),
+    /// soit ~20 appels séquentiels avant de répondre — latence catastrophique sur modèle local 1B.
+    /// Activer uniquement avec un cross-encoder dédié ou sur infrastructure capable.
+    /// (Constat R-5 du plan Lot 0)
+    /// </summary>
+    public bool Enabled { get; set; } = false;
 
     /// <summary>Nombre de chunks conservés après reranking. Par défaut : 5.</summary>
     public int TopKAfterRerank { get; set; } = 5;
@@ -67,8 +73,13 @@ public sealed class RerankerOptions
 /// <summary>Options pour la compression contextuelle des chunks.</summary>
 public sealed class ContextCompressionOptions
 {
-    /// <summary>Active ou désactive la compression contextuelle. Par défaut : true.</summary>
-    public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// Active ou désactive la compression contextuelle. Par défaut : <c>false</c>.
+    /// Désactivée par défaut car elle génère 1 appel LLM par chunk survivant.
+    /// Cumulée au reranker, une question RAG pouvait déclencher ~26 appels LLM séquentiels.
+    /// (Constat R-6 du plan Lot 0)
+    /// </summary>
+    public bool Enabled { get; set; } = false;
 }
 
 /// <summary>Options pour le cache Redis des réponses RAG.</summary>

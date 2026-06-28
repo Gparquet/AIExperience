@@ -77,6 +77,21 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 contextChunks = rankedChunks.Select(r => r.Chunk).ToList();
             }
 
+            // R-4 : Garde-fou contexte vide — si aucun chunk pertinent n'a survécu au pipeline,
+            // court-circuiter l'appel LLM pour éviter les hallucinations sur contexte vide.
+            if (contextChunks.Count == 0)
+            {
+                sw.Stop();
+                return new RagResponse
+                {
+                    Answer = "Aucun document pertinent n'a été trouvé pour répondre à cette question.",
+                    Citations = [],
+                    StrategyUsed = strategy,
+                    TotalTokens = 0,
+                    DurationMs = sw.ElapsedMilliseconds
+                };
+            }
+
             // 5. Construction du prompt et appel au LLM
             var chatHistory = await BuildChatHistoryAsync(query, contextChunks, ct);
             var completionResult = await chatClient.GetResponseAsync(
@@ -87,16 +102,21 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
 
             sw.Stop();
 
-            // 6. Construction des citations depuis les chunks reclassés
-            var citations = rankedChunks.Select(r => Citation.Create(
-                Guid.Empty, r.Chunk.DocumentId,
-                r.Chunk.DocumentName ?? r.Chunk.DocumentId.ToString(),
-                r.Chunk.Content[..Math.Min(350, r.Chunk.Content.Length)],
-                r.Score, r.Chunk.PageNumber,
-                sectionTitle: r.Chunk.SectionTitle,
-                chunkIndex: r.Chunk.ChunkIndex,
-                startTime: r.Chunk.StartTime,
-                endTime: r.Chunk.EndTime)).ToList();
+            // 6. Construction des citations depuis contextChunks (les chunks réellement vus par le LLM).
+            // On utilise rankedChunks uniquement pour récupérer le score de pertinence par chunk.
+            // Si la compression est active, contextChunks est un sous-ensemble de rankedChunks :
+            // citer rankedChunks entier produirait des citations pour des passages non injectés au LLM.
+            var scoreByChunkId = rankedChunks.ToDictionary(r => r.Chunk.Id, r => r.Score);
+            var citations = contextChunks.Select(chunk => Citation.Create(
+                Guid.Empty, chunk.DocumentId,
+                chunk.DocumentName ?? chunk.DocumentId.ToString(),
+                chunk.Content[..Math.Min(350, chunk.Content.Length)],
+                scoreByChunkId.TryGetValue(chunk.Id, out var s) ? s : 0.0,
+                chunk.PageNumber,
+                sectionTitle: chunk.SectionTitle,
+                chunkIndex: chunk.ChunkIndex,
+                startTime: chunk.StartTime,
+                endTime: chunk.EndTime)).ToList();
 
             return new RagResponse
             {
@@ -158,6 +178,25 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 contextChunks = rankedChunks.Select(r => r.Chunk).ToList();
             }
 
+            // R-4 : Garde-fou contexte vide (streaming) — évite les hallucinations sur contexte vide.
+            if (contextChunks.Count == 0)
+            {
+                sw.Stop();
+                yield return new RagStreamChunk
+                {
+                    IsDone = true,
+                    FinalResponse = new RagResponse
+                    {
+                        Answer = "Aucun document pertinent n'a été trouvé pour répondre à cette question.",
+                        Citations = [],
+                        StrategyUsed = strategy,
+                        TotalTokens = 0,
+                        DurationMs = sw.ElapsedMilliseconds
+                    }
+                };
+                yield break;
+            }
+
             // 5. Construction du prompt
             var chatHistory = await BuildChatHistoryAsync(query, contextChunks, ct);
             var messages = chatHistory
@@ -182,16 +221,19 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
 
             sw.Stop();
 
-            // 7. Citations + réponse finale (événement done)
-            var citations = rankedChunks.Select(r => Citation.Create(
-                Guid.Empty, r.Chunk.DocumentId,
-                r.Chunk.DocumentName ?? r.Chunk.DocumentId.ToString(),
-                r.Chunk.Content[..Math.Min(350, r.Chunk.Content.Length)],
-                r.Score, r.Chunk.PageNumber,
-                sectionTitle: r.Chunk.SectionTitle,
-                chunkIndex: r.Chunk.ChunkIndex,
-                startTime: r.Chunk.StartTime,
-                endTime: r.Chunk.EndTime)).ToList();
+            // 7. Citations + réponse finale (événement done).
+            // Même logique que AskAsync : citations depuis contextChunks (vus par le LLM).
+            var streamScoreByChunkId = rankedChunks.ToDictionary(r => r.Chunk.Id, r => r.Score);
+            var citations = contextChunks.Select(chunk => Citation.Create(
+                Guid.Empty, chunk.DocumentId,
+                chunk.DocumentName ?? chunk.DocumentId.ToString(),
+                chunk.Content[..Math.Min(350, chunk.Content.Length)],
+                streamScoreByChunkId.TryGetValue(chunk.Id, out var s) ? s : 0.0,
+                chunk.PageNumber,
+                sectionTitle: chunk.SectionTitle,
+                chunkIndex: chunk.ChunkIndex,
+                startTime: chunk.StartTime,
+                endTime: chunk.EndTime)).ToList();
 
             yield return new RagStreamChunk
             {
@@ -411,11 +453,20 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 }
             }
 
-            // Construction du contexte documentaire depuis les chunks retenus
+            // Construction du contexte documentaire depuis les chunks retenus.
+            // R-1 : on injecte DocumentName (lisible) au lieu du GUID (incompréhensible pour le LLM).
+            // Le LLM peut ainsi citer correctement [SOURCE: NomDocument, p.X].
             var contextBuilder = new StringBuilder();
             foreach (var (chunk, i) in contextChunks.Select((c, i) => (c, i + 1)))
             {
-                contextBuilder.AppendLine($"[Extrait {i}] Document: {chunk.DocumentId}, Page: {chunk.PageNumber}");
+                // Source lisible : nom du document + page optionnelle + section optionnelle
+                var source = chunk.DocumentName ?? "Document inconnu";
+                var page   = chunk.PageNumber is { } p ? $", p.{p}" : string.Empty;
+                var section = string.IsNullOrWhiteSpace(chunk.SectionTitle)
+                    ? string.Empty
+                    : $", Section: {chunk.SectionTitle}";
+
+                contextBuilder.AppendLine($"[Extrait {i}] Source: {source}{page}{section}");
                 contextBuilder.AppendLine(chunk.Content);
                 contextBuilder.AppendLine();
             }

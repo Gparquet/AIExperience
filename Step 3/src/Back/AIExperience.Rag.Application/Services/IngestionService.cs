@@ -32,6 +32,13 @@ public sealed class IngestionService(
         var chunker = CreateChunker(strategy);
         var textChunks = chunker.Chunk(rawText);
 
+        // Garde-fou I-3 : 0 chunk = extraction vide → document inutilisable.
+        // Lever une exception plutôt que persister un document "Completed" sans contenu.
+        if (textChunks.Count == 0)
+            throw new InvalidOperationException(
+                $"Aucun chunk produit pour le document {documentId}. " +
+                "L'extraction de texte a retourné un contenu vide ou non découpable.");
+
         // 3. Embedding + stockage batch dans pgvector (1 transaction pour tous les chunks)
         var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), ct);
 
@@ -61,6 +68,12 @@ public sealed class IngestionService(
         var chunker = CreateChunker(ChunkingStrategy.Recursive);
         var textChunks = chunker.Chunk(text);
 
+        // Garde-fou I-3 (même logique que IngestAsync) : texte vide ou non découpable.
+        if (textChunks.Count == 0)
+            throw new InvalidOperationException(
+                $"Aucun chunk produit pour le document {documentId} (IngestTextAsync). " +
+                "Le texte fourni est vide ou entièrement non découpable.");
+
         // 2. Embedding + stockage batch dans pgvector (1 transaction pour tous les chunks)
         var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), ct);
 
@@ -88,6 +101,13 @@ public sealed class IngestionService(
     {
         // Chunking temporel : respecte les frontières des segments Whisper et préserve les timestamps
         var textChunks = temporalChunker.ChunkSegments(segments);
+
+        // Garde-fou I-3 : vidéo silencieuse ou corrompue → 0 segments → 0 chunks.
+        if (textChunks.Count == 0)
+            throw new InvalidOperationException(
+                $"Aucun chunk produit pour le document {documentId} (IngestFromSegmentsAsync). " +
+                "La transcription ne contient aucun segment (vidéo silencieuse ou corrompue ?).");
+
         var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), ct);
 
         // Stockage batch : 1 transaction pour tous les chunks (vs N commits auto-isolés)

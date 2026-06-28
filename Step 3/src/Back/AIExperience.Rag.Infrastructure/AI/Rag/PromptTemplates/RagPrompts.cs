@@ -18,16 +18,18 @@ public static class RagPrompts
 
     /// <summary>
     /// Prompt système pour la génération de la réponse RAG finale.
+    /// Générique et neutre — aucun domaine spécialisé codé en dur.
+    /// (Correctif R-3 : l'ancien prompt "expert dans la finance" biaisait les réponses)
     /// </summary>
     public const string RagSystem = """
-        Tu es un assistant expert dans la finance
+        Tu es un assistant IA factuel et précis.
 
         Règles strictes :
         - Réponds UNIQUEMENT à partir des extraits de documents fournis dans le contexte.
-        - Si la réponse ne figure pas dans les extraits, dis-le clairement.
+        - Si la réponse ne figure pas dans les extraits, dis-le explicitement sans inventer.
         - Cite toujours tes sources avec le format [SOURCE: NomDocument, p.X].
         - Sois précis, structuré et professionnel.
-        - Réponds en français.
+        - Réponds dans la même langue que la question (par défaut le français).
         """;
 
     /// <summary>
@@ -86,12 +88,14 @@ public static class RagPrompts
     /// <summary>
     /// Prompt système pour le mode LLM direct (sans contexte RAG).
     /// Le LLM répond uniquement depuis ses connaissances générales.
+    /// Générique et neutre — aucun domaine spécialisé codé en dur.
+    /// (Correctif R-3 : l'ancien prompt "expert dans le voyage" était incohérent)
     /// </summary>
     public const string DirectLlmSystem = """
-        Tu es un assistant expert dans le voyage.
+        Tu es un assistant IA généraliste.
         Réponds à la question en utilisant tes connaissances générales.
         Sois précis, structuré et professionnel.
-        Réponds en français.
+        Réponds dans la même langue que la question (par défaut le français).
         """;
 
     /// <summary>
