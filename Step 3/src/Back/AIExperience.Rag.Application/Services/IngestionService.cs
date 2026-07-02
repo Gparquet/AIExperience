@@ -9,13 +9,15 @@ namespace AIExperience.Rag.Application.Services;
 /// <summary>
 /// Implémentation de <see cref="IIngestionService"/>.
 /// Orchestre le pipeline complet d'ingestion : parsing → chunking → embedding → stockage pgvector.
+/// Le chunker est injecté par DI pour pouvoir être remplacé ou testé sans modifier ce service.
 /// </summary>
 public sealed class IngestionService(
     ICompositeTextExtractor compositeTextExtractor,
     IEmbeddingService embeddingService,
     IDocumentRepository documentRepository,
     IVectorStoreService vectorStoreService,
-    ITemporalChunker temporalChunker) : IIngestionService
+    ITemporalChunker temporalChunker,
+    ITextChunker textChunker) : IIngestionService
 {
     /// <inheritdoc/>
     public async Task IngestAsync(
@@ -25,14 +27,13 @@ public sealed class IngestionService(
         ChunkingStrategy strategy = ChunkingStrategy.Recursive,
         CancellationToken ct = default)
     {
-        // 1. Parsing du fichier en texte brut
-        var rawText = await compositeTextExtractor.ExtractTextAsync(filePath, ct);
+        // 1. Extraction page par page, préserve PageNumber si l'extracteur le supporte.
+        var pages = await compositeTextExtractor.ExtractPagesAsync(filePath, ct);
 
-        // 2. Chunking selon la stratégie choisie
-        var chunker = CreateChunker(strategy);
-        var textChunks = chunker.Chunk(rawText);
+        // 2. Chunking avec propagation du numéro de page
+        var textChunks = textChunker.ChunkPages(pages);
 
-        // Garde-fou I-3 : 0 chunk = extraction vide → document inutilisable.
+        // Garde-fou : 0 chunk = extraction vide → le document serait persisté sans contenu interrogeable.
         // Lever une exception plutôt que persister un document "Completed" sans contenu.
         if (textChunks.Count == 0)
             throw new InvalidOperationException(
@@ -41,6 +42,13 @@ public sealed class IngestionService(
 
         // 3. Embedding + stockage batch dans pgvector (1 transaction pour tous les chunks)
         var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), ct);
+
+        // Vérification de cohérence avant l'accès indexé embeddings[i].
+        // Le service d'embedding DOIT retourner autant de vecteurs que de textes soumis.
+        if (embeddings.Count != textChunks.Count)
+            throw new InvalidOperationException(
+                $"Incohérence embedding/chunk : {embeddings.Count} vecteurs retournés " +
+                $"pour {textChunks.Count} chunks (document {documentId}).");
 
         var items = textChunks.Select((tc, i) =>
         {
@@ -65,10 +73,9 @@ public sealed class IngestionService(
         CancellationToken ct = default)
     {
         // 1. Chunking du texte brut (l'étape d'extraction est déjà faite — transcription)
-        var chunker = CreateChunker(ChunkingStrategy.Recursive);
-        var textChunks = chunker.Chunk(text);
+        var textChunks = textChunker.Chunk(text);
 
-        // Garde-fou I-3 (même logique que IngestAsync) : texte vide ou non découpable.
+        // Garde-fou (même logique que IngestAsync) : texte vide ou non découpable.
         if (textChunks.Count == 0)
             throw new InvalidOperationException(
                 $"Aucun chunk produit pour le document {documentId} (IngestTextAsync). " +
@@ -76,6 +83,12 @@ public sealed class IngestionService(
 
         // 2. Embedding + stockage batch dans pgvector (1 transaction pour tous les chunks)
         var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), ct);
+
+        // Vérification de cohérence avant l'accès indexé embeddings[i].
+        if (embeddings.Count != textChunks.Count)
+            throw new InvalidOperationException(
+                $"Incohérence embedding/chunk : {embeddings.Count} vecteurs retournés " +
+                $"pour {textChunks.Count} chunks (IngestTextAsync, document {documentId}).");
 
         var items = textChunks.Select((tc, i) =>
         {
@@ -102,13 +115,19 @@ public sealed class IngestionService(
         // Chunking temporel : respecte les frontières des segments Whisper et préserve les timestamps
         var textChunks = temporalChunker.ChunkSegments(segments);
 
-        // Garde-fou I-3 : vidéo silencieuse ou corrompue → 0 segments → 0 chunks.
+        // Garde-fou : une vidéo silencieuse ou corrompue ne produit aucun segment, donc aucun chunk.
         if (textChunks.Count == 0)
             throw new InvalidOperationException(
                 $"Aucun chunk produit pour le document {documentId} (IngestFromSegmentsAsync). " +
                 "La transcription ne contient aucun segment (vidéo silencieuse ou corrompue ?).");
 
         var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), ct);
+
+        // Vérification de cohérence avant l'accès indexé embeddings[i].
+        if (embeddings.Count != textChunks.Count)
+            throw new InvalidOperationException(
+                $"Incohérence embedding/chunk : {embeddings.Count} vecteurs retournés " +
+                $"pour {textChunks.Count} chunks (IngestFromSegmentsAsync, document {documentId}).");
 
         // Stockage batch : 1 transaction pour tous les chunks (vs N commits auto-isolés)
         var items = textChunks.Select((tc, i) =>
@@ -131,10 +150,4 @@ public sealed class IngestionService(
         => await vectorStoreService.DeleteByDocumentIdAsync(documentId, ct);
 
     private static string CleanString(string? input) => input?.Replace("\0", string.Empty) ?? string.Empty;
-
-    private static ITextChunker CreateChunker(ChunkingStrategy chunkingStrategy) => chunkingStrategy switch
-    {
-        ChunkingStrategy.Recursive => new RecursiveChunker(),
-        _ => new RecursiveChunker()
-    };
 }

@@ -6,9 +6,8 @@ namespace AIExperience.Rag.Application.Services.TextExtractor;
 /// <summary>
 /// Sélectionne l'extracteur de texte approprié selon l'extension du fichier
 /// et délègue l'extraction à cet extracteur.
-/// Corrige le constat I-3 : l'ancienne implémentation retournait silencieusement
-/// <c>string.Empty</c> si aucun extracteur ne correspondait, produisant des documents
-/// "Completed" avec 0 chunk — un échec invisible.
+/// Lève une exception si aucun extracteur ne correspond, évitant des documents
+/// "Completed" avec 0 chunk qui seraient silencieusement inutilisables.
 /// </summary>
 public sealed class CompositeTextExtractor : ICompositeTextExtractor
 {
@@ -27,35 +26,51 @@ public sealed class CompositeTextExtractor : ICompositeTextExtractor
     }
 
     /// <inheritdoc/>
-    public bool CanHandle(string filePath) => true;
-
-    /// <inheritdoc/>
     /// <exception cref="NotSupportedException">
     /// Levée si aucun extracteur enregistré ne supporte l'extension du fichier.
-    /// Remplace l'ancien retour silencieux de <c>string.Empty</c> qui produisait
-    /// des documents "Completed" sans aucun chunk interrogeable.
     /// </exception>
     public Task<string> ExtractTextAsync(string filePath, CancellationToken cancellationToken)
     {
-        var extractor = _textExtractors.FirstOrDefault(e => e.CanHandle(filePath));
-
-        if (extractor is null)
-        {
-            var extension = Path.GetExtension(filePath);
-            _logger.LogError(
-                "Aucun extracteur ne prend en charge l'extension '{Extension}' pour le fichier : {File}",
-                extension, filePath);
-
-            // Exception explicite : un fichier non géré doit marquer le document Failed,
-            // pas produire silencieusement un document Completed vide.
-            // Note : ITextExtractor n'expose pas de liste d'extensions (design existant) ;
-            // un message précis serait possible si l'interface était enrichie d'une propriété
-            // SupportedExtensions — à envisager dans le Lot 1.
-            throw new NotSupportedException(
-                $"Format non supporté : '{extension}'. " +
-                "Vérifiez que le fichier correspond à un format pris en charge (PDF, HTML, vidéo/audio).");
-        }
-
+        var extractor = ResolveExtractor(filePath);
         return extractor.ExtractTextAsync(filePath, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Si l'extracteur résolu implémente <see cref="IPageAwareTextExtractor"/>, délègue
+    /// l'extraction paginée ; sinon, retourne une unique entrée (page 1, texte complet).
+    /// Préserve les numéros de page afin que le chunker puisse les propager dans chaque chunk.
+    /// </remarks>
+    public async Task<IReadOnlyList<(int PageNumber, string Text)>> ExtractPagesAsync(
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        var extractor = ResolveExtractor(filePath);
+
+        // Si l'extracteur sait retourner des pages numérotées, on l'utilise directement.
+        if (extractor is IPageAwareTextExtractor pagedExtractor)
+            return await pagedExtractor.ExtractPagesAsync(filePath, cancellationToken);
+
+        // Fallback : extracteur non paginé → wrap en page 1 unique.
+        var text = await extractor.ExtractTextAsync(filePath, cancellationToken);
+        return [(1, text)];
+    }
+
+    /// <summary>
+    /// Résout l'extracteur adapté au format du fichier ou lève <see cref="NotSupportedException"/>.
+    /// </summary>
+    private ITextExtractor ResolveExtractor(string filePath)
+    {
+        var extractor = _textExtractors.FirstOrDefault(e => e.CanHandle(filePath));
+        if (extractor is not null) return extractor;
+
+        var extension = Path.GetExtension(filePath);
+        _logger.LogError(
+            "Aucun extracteur ne prend en charge l'extension '{Extension}' pour le fichier : {File}",
+            extension, filePath);
+
+        throw new NotSupportedException(
+            $"Format non supporté : '{extension}'. " +
+            "Vérifiez que le fichier correspond à un format pris en charge (PDF, HTML, vidéo/audio).");
     }
 }
