@@ -19,6 +19,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 using OpenAI;
+using Polly;
+using Polly.Retry;
 using System.ClientModel;
 
 namespace AIExperience.Rag.Infrastructure;
@@ -102,6 +104,21 @@ public static class DependencyInjection
 
     private static IServiceCollection AddRagPipeline(this IServiceCollection services)
     {
+        // Pipeline de résilience Polly pour les appels embeddings.
+        // Retry exponentiel avec jitter sur erreurs HTTP transitoires (429, 503...).
+        services.AddSingleton(_ => new ResiliencePipelineBuilder()
+            .AddRetry(new RetryStrategyOptions
+            {
+                MaxRetryAttempts = 3,
+                Delay = TimeSpan.FromSeconds(1),
+                BackoffType = DelayBackoffType.Exponential,
+                UseJitter = true,
+                ShouldHandle = new PredicateBuilder()
+                    .Handle<HttpRequestException>()
+                    .Handle<TaskCanceledException>()
+            })
+            .Build());
+
         services.AddScoped<IEmbeddingService, OpenAIEmbeddingService>();
         return services;
     }
