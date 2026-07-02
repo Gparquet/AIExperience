@@ -103,19 +103,19 @@ public sealed class PgVectorStoreService : IVectorStoreService
             ? "AND dc.document_id = ANY(@docIds)"
             : string.Empty;
 
+        // La requête cible la colonne générée content_tsv (indexée via GIN) pour de meilleures performances.
+        // ts_rank(content_tsv, …) exploite le tsvector pré-calculé → O(log N) au lieu de scan séquentiel.
         // plainto_tsquery convertit la phrase en opérateurs AND implicites — plus robuste que to_tsquery.
-        // ts_rank retourne un score flottant entre 0 et 1 selon la fréquence et position des termes.
         // JOIN documents pour récupérer le nom du fichier source sans requête N+1.
-        // start_time_seconds et end_time_seconds ajoutés en fin de SELECT (ordinaux 10 et 11).
         var sql = $"""
             SELECT dc.id, dc.document_id, dc.content, dc.chunk_index, dc.page_number,
                    dc.section_title, dc.embedding_dimensions, dc.created_at,
-                   ts_rank(to_tsvector('french', dc.content), plainto_tsquery('french', @query))::float8 AS score,
+                   ts_rank(dc.content_tsv, plainto_tsquery('french', @query))::float8 AS score,
                    d.file_name,
                    dc.start_time_seconds, dc.end_time_seconds
             FROM document_chunks dc
             JOIN documents d ON d.id = dc.document_id
-            WHERE to_tsvector('french', dc.content) @@ plainto_tsquery('french', @query)
+            WHERE dc.content_tsv @@ plainto_tsquery('french', @query)
             {documentFilter}
             ORDER BY score DESC
             LIMIT @topK

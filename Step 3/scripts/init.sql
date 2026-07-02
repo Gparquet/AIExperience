@@ -2,6 +2,11 @@
 -- RagDocumentChat — Script de création de la base de données
 -- PostgreSQL 17 + pgvector
 -- Compatible avec les configurations EF Core du projet
+--
+-- Lot 1 — I-17 : ajout de la colonne générée content_tsv (tsvector)
+--                et de l'index GIN pour la recherche full-text performante.
+-- Lot 1 — I-18 : réalignement avec le modèle EF Core :
+--                colonnes start_time_seconds / end_time_seconds désormais présentes.
 -- ============================================================
 
 -- Extension pgvector (obligatoire)
@@ -30,15 +35,17 @@ CREATE TABLE IF NOT EXISTS documents (
     updated_at           TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS ix_documents_user_id   ON documents (user_id);
-CREATE INDEX IF NOT EXISTS ix_documents_status    ON documents (status);
+CREATE INDEX IF NOT EXISTS ix_documents_user_id    ON documents (user_id);
+CREATE INDEX IF NOT EXISTS ix_documents_status     ON documents (status);
 CREATE INDEX IF NOT EXISTS ix_documents_created_at ON documents (created_at);
 
 -- ============================================================
 -- TABLE : document_chunks
--- Vecteur d'embedding : 3072 dims (AzureOpenAI/GitHubModels)
---                    ou 768 dims  (Ollama nomic-embed-text)
--- ⚠️  Adapter vector(3072) selon votre provider AI
+--
+-- Dimension du vecteur d'embedding :
+--   ⚠️  768  pour Ollama nomic-embed-text / LM Studio (défaut)
+--   ⚠️  3072 pour AzureOpenAI text-embedding-3-large
+-- Adapter vector(768) si vous changez de provider.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS document_chunks (
     Id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -47,19 +54,34 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     chunk_index          INTEGER     NOT NULL DEFAULT 0,
     page_number          INTEGER,
     section_title        VARCHAR(500),
-    embedding_dimensions INTEGER NOT NULL DEFAULT 768,
-	embedding            vector(768),         
+    embedding_dimensions INTEGER     NOT NULL DEFAULT 768,
+    embedding            vector(768),
+    -- I-18 : colonnes temporelles pour les chunks issus de vidéos (Whisper)
+    -- Valeur en secondes (double precision) ; NULL pour les documents non-vidéo.
+    start_time_seconds   DOUBLE PRECISION,
+    end_time_seconds     DOUBLE PRECISION,
+    -- I-17 : colonne tsvector générée pour l'index GIN (recherche full-text rapide).
+    -- GENERATED ALWAYS AS … STORED : calculé une fois à l'INSERT/UPDATE, stocké physiquement.
+    -- ⚠️  La langue 'french' est figée ici ; à rendre configurable si besoin multilingue (I-6).
+    content_tsv          tsvector
+                         GENERATED ALWAYS AS (to_tsvector('french', content)) STORED,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS ix_document_chunks_document_id  ON document_chunks (document_id);
-CREATE INDEX IF NOT EXISTS ix_document_chunks_chunk_index  ON document_chunks (chunk_index);
+CREATE INDEX IF NOT EXISTS ix_document_chunks_document_id ON document_chunks (document_id);
+CREATE INDEX IF NOT EXISTS ix_document_chunks_chunk_index ON document_chunks (chunk_index);
 
--- HNSW fonctionne car 768 ≤ 2000 ✅
+-- HNSW sur le vecteur cosinus : fonctionne pour vector(768) ≤ 2000 dims ✅
 CREATE INDEX IF NOT EXISTS ix_document_chunks_embedding_hnsw
     ON document_chunks
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
+
+-- I-17 : index GIN sur la colonne tsvector générée.
+-- Permet SearchFullTextAsync d'atteindre O(log N) au lieu d'un scan séquentiel complet.
+CREATE INDEX IF NOT EXISTS ix_document_chunks_content_tsv
+    ON document_chunks
+    USING gin (content_tsv);
 
 -- ============================================================
 -- TABLE : conversation_sessions
@@ -79,14 +101,14 @@ CREATE INDEX IF NOT EXISTS ix_conversation_sessions_updated_at ON conversation_s
 -- TABLE : chat_messages
 -- ============================================================
 CREATE TABLE IF NOT EXISTS chat_messages (
-    Id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id   UUID        NOT NULL REFERENCES conversation_sessions(id) ON DELETE CASCADE,
-    role         VARCHAR(20) NOT NULL,           -- 'User' | 'Assistant' | 'System'
-    content      TEXT        NOT NULL,
-    tokens_used  INTEGER     NOT NULL DEFAULT 0,
-    strategy_used VARCHAR(20),                   -- 'Direct' | 'HyDE' | 'Fusion' | 'Adaptive'
-    duration_ms  BIGINT      NOT NULL DEFAULT 0,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    Id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id    UUID        NOT NULL REFERENCES conversation_sessions(id) ON DELETE CASCADE,
+    role          VARCHAR(20) NOT NULL,           -- 'User' | 'Assistant' | 'System'
+    content       TEXT        NOT NULL,
+    tokens_used   INTEGER     NOT NULL DEFAULT 0,
+    strategy_used VARCHAR(20),                    -- 'Direct' | 'HyDE' | 'Fusion' | 'Adaptive'
+    duration_ms   BIGINT      NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS ix_chat_messages_session_id ON chat_messages (session_id);
@@ -109,7 +131,7 @@ CREATE INDEX IF NOT EXISTS ix_citations_message_id  ON citations (message_id);
 CREATE INDEX IF NOT EXISTS ix_citations_document_id ON citations (document_id);
 
 -- ============================================================
--- TABLE : outbox_messages  (Outbox Pattern)
+-- TABLE : outbox_messages  (Outbox Pattern — Lot 4)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS outbox_messages (
     Id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
