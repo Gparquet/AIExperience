@@ -91,6 +91,18 @@ public class DocumentsController(
         return deleted ? NoContent() : NotFound();
     }
 
+    /// <summary>
+    /// À appeler une fois après activation de <c>AI.EmbeddingTaskPrefixes</c> : les vecteurs stockés sans préfixe sont incompatibles
+    /// avec des questions désormais préfixées "search_query: ". N'extrait/ne re-chunk rien —
+    /// seul l'embedding de chaque chunk existant est recalculé.
+    /// </summary>
+    [HttpPost("reembed-corpus")]
+    public async Task<ActionResult<ReembedCorpusResponse>> ReembedCorpus(CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new ReembedCorpusCommand(), cancellationToken);
+        return Ok(new ReembedCorpusResponse(result.ChunksReembedded, result.DurationMs));
+    }
+
     private static DocumentResponse ToResponse(AIExperience.Rag.Domain.Entities.Document d) =>
         new(d.Id, d.FileName, d.ContentType, d.FileSizeBytes, d.Status.ToString(), d.CreatedAt);
 

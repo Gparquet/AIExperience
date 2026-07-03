@@ -4,6 +4,8 @@
 > Objectif : améliorer la **qualité**, la **robustesse** et la **performance** du pipeline
 > RAG (ingestion → embeddings → recherche → génération LLM) **sur tous les types de document**.
 > Date d'analyse : 2026-06-26 — Périmètre : `Step 3/src/Back` + `Step 3/src/Front`.
+> **Révision : 2026-07-02** — mise à jour d'avancement (Lot 0 ✅, Lot 1 ~80 %), ajout des
+> constats R-15 à R-18 (pertinence de la récupération) et insertion du **Lot 0-bis**.
 
 ---
 
@@ -21,6 +23,21 @@ reranking, compression, citations enrichies). Mais l'analyse du code révèle **
 Le fil rouge : **la chaîne « page → section → citation » est rompue** et **la restitution est lente
 et peu fiable** parce que les métadonnées de structure ne sont jamais propagées et que les étapes
 LLM coûteuses sont activées par défaut sans batching.
+
+### Avancement (révision 2026-07-02)
+
+| Lot | Statut | Preuve |
+|-----|--------|--------|
+| **Lot 0** — quick wins critiques | ✅ **Livré** (R-1, R-3, R-4, R-5/R-6 défauts, I-1, I-3, I-19 + tests) | commit `4a9dbb7` (28/06) |
+| **Lot 1** — robustesse ingestion | 🟨 **~80 % livré** (I-5, I-7, I-8, I-9 partiel, I-11, I-12, I-17, I-18) — reste : taille en tokens (I-9), I-10, I-13, I-14, I-15 | commits `f18c79a`, `61b20bc`, `f12b23a`, `742f59d` (02/07) |
+| **Lot 0-bis** — pertinence de la récupération (**nouveau**) | 🔜 **Prochain lot à exécuter** — répond au symptôme « sources hors sujet dans le chat » | §4, constats R-15 à R-18 |
+| **Lots 2, 3, 4** | ⏳ Non commencés | — |
+
+> ⚠️ **Effet de bord du Lot 0, non anticipé** : la désactivation du reranker (R-5) a supprimé la
+> coupe à `TopKAfterRerank = 5` et la compression ne filtre plus les chunks « AUCUN ». Le dernier
+> filtre de pertinence a disparu : les **10 chunks bruts** du Top-K sont désormais tous injectés
+> au LLM **et affichés en citations**, bruit compris. D'où l'insertion du Lot 0-bis qui restaure
+> un filtrage de précision *sans* réintroduire la latence (voir R-18).
 
 ---
 
@@ -98,8 +115,12 @@ LLM coûteuses sont activées par défaut sans batching.
 | # | Constat | Localisation | Impact |
 |---|---------|--------------|--------|
 | R-9 | **Pas de recherche hybride** : on fait vectoriel **ou** full-text, jamais les deux fusionnés. Les briques existent (`SearchFullTextAsync`, `ReciprocalRankFusion`) mais ne sont pas combinées → recall sous-optimal sur termes rares/exacts | `RagPipelineService.RetrieveChunksAsync` | 🟠 Qualité du recall |
-| R-10 | `hnsw.ef_search` non réglé ; `ScoreThreshold = 0.3` arbitraire et appliqué côté SQL (peut écarter des chunks pertinents ou laisser passer du bruit selon le modèle d'embedding) | [PgVectorStoreService.cs:44-56](Step%203/src/Back/AIExperience.Rag.Infrastructure/VectorStore/PgVectorStoreService.cs#L44-L56) | 🟡 Précision/recall |
+| R-10 | `hnsw.ef_search` non réglé ; `ScoreThreshold = 0.3` **inopérant avec `nomic-embed-text`** (deux textes sans aucun rapport scorent 0.4–0.6 avec ce modèle → le seuil ne filtre rien, le Top-K se remplit de bruit). **Reclassé 🟡 → 🔴** : c'est la cause directe des « sources hors sujet » visibles dans le chat | [PgVectorStoreService.cs:44-56](Step%203/src/Back/AIExperience.Rag.Infrastructure/VectorStore/PgVectorStoreService.cs#L44-L56) | 🔴 Sources non pertinentes |
 | R-11 | **Aucune gestion de budget tokens** : contexte construit depuis tous les chunks sans contrôle de la fenêtre du modèle local (≈4096). Risque de troncature silencieuse de l'entrée | [RagPipelineService.cs:414-427](Step%203/src/Back/AIExperience.Rag.Infrastructure/AI/Rag/RagPipelineService.cs#L414-L427) | 🟠 Réponses tronquées |
+| R-15 | **Préfixes de tâche `nomic` absents** *(nouveau — révision 02/07)* : `nomic-embed-text-v1.5` est un modèle **asymétrique** entraîné avec les préfixes `search_document:` (ingestion) et `search_query:` (question). `OpenAIEmbeddingService` envoie le texte brut des deux côtés → séparation pertinent/non-pertinent fortement dégradée | [OpenAIEmbeddingService.cs:45-51](Step%203/src/Back/AIExperience.Rag.Infrastructure/AI/Embedding/OpenAIEmbeddingService.cs#L45-L51) | 🔴 Qualité de récupération |
+| R-16 | **Fusion : résultat RRF jamais tronqué ni seuillé** *(nouveau — révision 02/07)* : `RetrieveChunksAsync` retourne `ReciprocalRankFusion.Fuse(...)` sans `.Take(TopK)` → jusqu'à 4 requêtes × TopK = **40 chunks** injectés au LLM et affichés en citations. Les scores RRF (~0.016–0.06) remplacent les scores cosinus → aucun seuil applicable, scores incohérents dans l'UI | [RagPipelineService.cs:418](Step%203/src/Back/AIExperience.Rag.Infrastructure/AI/Rag/RagPipelineService.cs#L418) | 🔴 Explosion du contexte |
+| R-17 | **Flags de configuration ignorés** *(nouveau — révision 02/07)* : `HyDE.Enabled` et `MultiQuery.Enabled` ne sont jamais consultés par le pipeline (le routeur Adaptive peut router vers HyDE/Fusion même désactivés) ; `Cache.Enabled = true` par défaut alors qu'**aucun cache n'existe** — config trompeuse | [RagOptions.cs](Step%203/src/Back/AIExperience.Rag.Infrastructure/Options/RagOptions.cs), [RagPipelineService.cs:385-427](Step%203/src/Back/AIExperience.Rag.Infrastructure/AI/Rag/RagPipelineService.cs#L385-L427) | 🟡 Config non fiable |
+| R-18 | **Citations = tous les chunks récupérés** *(nouveau — révision 02/07)* : chaque chunk du Top-K devient une citation affichée, sans distinction « injecté au LLM » / « réellement utilisé ». Depuis la désactivation du reranker (Lot 0), plus aucun filtre ne s'interpose : le bruit du Top-K est visible tel quel dans le panneau Sources | [RagPipelineService.cs:110-119](Step%203/src/Back/AIExperience.Rag.Infrastructure/AI/Rag/RagPipelineService.cs#L110-L119) | 🔴 Sources non pertinentes |
 
 ### 3.4. Observabilité & qualité transverse
 
@@ -115,7 +136,7 @@ LLM coûteuses sont activées par défaut sans batching.
 
 Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impact / faible effort*.
 
-### 🥇 Lot 0 — Correctifs critiques « quick wins » (1 à 2 jours)
+### 🥇 Lot 0 — Correctifs critiques « quick wins » (1 à 2 jours) — ✅ LIVRÉ (28/06, commit `4a9dbb7`)
 
 > Rétablissent des fonctionnalités **annoncées mais cassées**, sans refonte.
 
@@ -126,13 +147,35 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 5. **I-19 Bug langue Whisper** — clé de cache du processeur par langue (dictionnaire `langue → processor`) ou rebuild si la langue change. *Impact 4 / S.*
 6. **I-3 Échec d'extraction non silencieux** — lever/loguer une vraie erreur et marquer le document `Failed` si 0 extracteur ou 0 chunk. *Impact 4 / S.*
 
-### 🥈 Lot 1 — Robustesse de l'ingestion (3 à 5 jours)
+### 🥈 Lot 1 — Robustesse de l'ingestion (3 à 5 jours) — 🟨 ~80 % LIVRÉ (02/07)
 
-7. **I-11 Sous-batching des embeddings** (ex. 96 textes/appel) + **I-12 retry Polly** (backoff exponentiel). *Impact 5 / M.*
-8. **I-7/I-8/I-9 Refonte du chunker** : vrai découpage récursif (paragraphe → phrase → mot), **taille en tokens** (tokenizer), overlap propre, et **propagation `SectionTitle` + `PageNumber`**. *Impact 5 / M.*
-9. **I-5 Préserver la pagination PDF** : extraire page par page (`(pageNumber, text)`), chunker en conservant la page d'origine. *Impact 4 / M.*
-10. **I-17 Index full-text GIN** : colonne générée `content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('french', content)) STORED` + `CREATE INDEX … USING gin(content_tsv)`. *Impact 4 / S.*
-11. **I-18 Réaligner `init.sql`** (colonnes temporelles + index full-text + dimension paramétrable) pour une base reproductible. *Impact 3 / S.*
+7. ✅ **I-11 Sous-batching des embeddings** (96 textes/appel) + **I-12 retry Polly** (backoff exponentiel). *Livré — commit `61b20bc`.*
+8. 🟨 **I-7/I-8/I-9 Refonte du chunker** : vrai découpage récursif, overlap sur frontière de phrase, propagation `SectionTitle` + `PageNumber` — *livré, commit `f18c79a`*. **Reste : taille en tokens** (le chunker compte toujours en caractères). *Impact 3 / M.*
+9. ✅ **I-5 Préserver la pagination PDF** : extraction page par page via `IPageAwareTextExtractor`, page propagée dans chaque chunk. *Livré — commit `f18c79a`.*
+10. ✅ **I-17 Index full-text GIN** : colonne générée `content_tsv` + index GIN, requête ciblant la colonne indexée. *Livré — commit `f12b23a`.*
+11. ✅ **I-18 Réaligner `init.sql`** : colonnes temporelles + `content_tsv` + index GIN intégrés. *Livré — commit `f12b23a`.*
+
+> Reliquat Lot 1 (reporté, non bloquant) : **I-9** taille en tokens, **I-10** segment Whisper
+> surdimensionné, **I-13** validation de la dimension d'embedding, **I-14** idempotence (doublons),
+> **I-15** `COPY` binaire.
+
+### 🎯 Lot 0-bis — Pertinence de la récupération (2 à 4 jours) — 🔜 PROCHAIN LOT
+
+> **Nouveau (révision 02/07).** Répond au symptôme observé en usage réel : *« le chat remonte des
+> sources de mon PDF, mais aussi d'autres ressources qui n'ont rien à voir »*. Cause structurelle :
+> le Top-K retourne **toujours** K voisins (pertinents ou non), le seuil 0.3 ne filtre rien avec
+> `nomic-embed`, et depuis le Lot 0 plus aucun filtre ne s'interpose avant les citations (R-18).
+
+23. **R-15 Préfixes `nomic`** : préfixer `search_document:` à l'ingestion et `search_query:` à la question dans `OpenAIEmbeddingService`, conditionné au modèle via `AiProviderOptions` (ex. `EmbeddingTaskPrefixes`). ⚠️ **Impose de ré-ingérer les documents** (vecteurs stockés incompatibles). *Impact 5 / S.*
+24. **R-16 Tronquer après RRF** : `.Take(opts.Retrieval.TopK)` sur le résultat de `Fuse(...)` ; distinguer score cosinus / score RRF dans les citations (ne pas afficher un RRF comme une similarité). *Impact 4 / S.*
+25. **R-10 Calibrer le seuil et le Top-K** : mesurer la distribution réelle des scores sur le corpus (question pertinente vs hors sujet), remonter `ScoreThreshold` en conséquence (ordre de grandeur 0.55–0.65 pour `nomic`, **après** R-15), et baisser `TopK` 10 → 5-6 tant qu'aucun reranker ne filtre derrière. Régler `hnsw.ef_search`. *Impact 4 / S.*
+26. **R-5' Reranker batché** *(remonté du Lot 3, point 15)* : **un seul** appel LLM qui note tous les chunks (JSON `{index: score}`) au lieu de N appels séquentiels — restaure le filtre de précision perdu au Lot 0 sans réintroduire la latence. Réactiver `Reranker.Enabled = true` une fois batché. *Impact 5 / M.*
+27. **R-9 Recherche hybride** *(remontée du Lot 3, point 16)* : vectoriel + full-text fusionnés via le RRF existant. *Impact 4 / M.*
+28. **R-17 Honorer les flags de config** : consulter `HyDE.Enabled` / `MultiQuery.Enabled` dans le pipeline (repli sur Direct si désactivé) ; passer `Cache.Enabled = false` par défaut tant que le cache n'est pas implémenté (R-8). *Impact 2 / S.*
+
+> **Vérification avant/après (mini R-13)** : constituer 5–10 questions « golden » sur le corpus
+> actuel et comparer les citations retournées avant et après chaque correctif du lot — sinon la
+> calibration du seuil (point 25) se fait à l'aveugle.
 
 ### 🥉 Lot 2 — Multi-format complet (5 à 8 jours)
 
@@ -142,8 +185,8 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 
 ### 🏅 Lot 3 — Qualité & performance de la restitution (5 à 8 jours)
 
-15. **R-5/R-6 Rerank & compression batchés** : un **seul** prompt qui score/condense tous les chunks (au lieu de N appels), ou cross-encoder dédié. *Impact 5 / M.*
-16. **R-9 Recherche hybride** : combiner vectoriel + full-text via le RRF existant. *Impact 4 / M.*
+15. ~~**R-5/R-6 Rerank & compression batchés**~~ → **remonté au Lot 0-bis (point 26)** pour le rerank ; la compression batchée reste ici, conditionnée au dépassement du budget tokens (R-11). *Impact 5 / M.*
+16. ~~**R-9 Recherche hybride**~~ → **remontée au Lot 0-bis (point 27)**.
 17. **R-2 Historique de conversation réel** : introduire `SessionId` dans les DTO chat, persister messages User/Assistant, charger l'historique. *Impact 4 / M.*
 18. **R-11 Budget tokens** : tronquer/sélectionner le contexte selon la fenêtre du modèle (compter les tokens). *Impact 4 / M.*
 19. **R-4 Garde-fou contexte vide** + **R-8 cache** (mémoire ou Redis) des réponses. *Impact 3 / M.*
@@ -159,16 +202,17 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 ## 5. Recommandation de séquencement
 
 ```
-Semaine 1 : Lot 0 (quick wins critiques) ─────────────► gains immédiats qualité + latence
-Semaine 2 : Lot 1 (robustesse ingestion)
-Semaine 3-4 : Lot 2 (multi-format) ‖ Lot 3 (restitution) en parallèle
-Continu   : Lot 4 (async, observabilité, évaluation)
+Semaine 1 : Lot 0 (quick wins critiques) ─────────────► ✅ LIVRÉ (28/06)
+Semaine 2 : Lot 1 (robustesse ingestion) ─────────────► 🟨 ~80 % LIVRÉ (02/07)
+Semaine 3 : Lot 0-bis (pertinence récupération) ──────► 🔜 PROCHAIN — corrige les sources hors sujet
+Semaine 4-5 : Lot 2 (multi-format) ‖ Lot 3 (restitution restante) en parallèle
+Continu   : Lot 4 (async, observabilité, évaluation) + reliquat Lot 1
 ```
 
-**Trois actions à plus fort ratio impact/effort à faire en premier** :
-1. **R-1** (nom de document dans le contexte) — débloque les citations.
-2. **R-5/R-6** (désactiver rerank+compression par défaut) — divise la latence par ~20.
-3. **I-11** (sous-batching embeddings) — débloque l'ingestion des gros documents.
+**Trois actions à plus fort ratio impact/effort à faire en premier (révision 02/07)** :
+1. **R-15** (préfixes `search_query:`/`search_document:` + ré-ingestion) — restaure la séparation pertinent/non-pertinent de `nomic-embed`.
+2. **R-16** (`.Take(TopK)` après RRF) — 1 ligne, évite jusqu'à 40 chunks en contexte/citations en mode Fusion.
+3. **R-10** (seuil calibré + TopK réduit) — filtre le bruit résiduel du Top-K.
 
 ---
 
@@ -176,10 +220,11 @@ Continu   : Lot 4 (async, observabilité, évaluation)
 
 - **Couplage dimension d'embedding ↔ schéma SQL** (`vector(768)`) : tout changement de provider casse l'`INSERT`. À rendre paramétrable/documenté.
 - **Aucune authentification** (`UserId` codé en dur) : à traiter avant toute mise en ligne.
-- **Pas de tests** côté pipeline RAG (seul `TemporalChunker` est couvert). Les Lots 1 et 3 doivent venir avec des tests unitaires (chunker, hybrid search, budget tokens).
-- **Modèle LLM local 1B** : qualité limitée ; le harnais d'évaluation (R-13) permettra d'arbitrer un éventuel passage à un modèle plus capable.
+- **Couverture de tests en progression** : Lot 0 et Lot 1 sont venus avec des tests (chunker, pagination PDF, batching, extracteurs, prompts, défauts d'options). Le Lot 0-bis doit suivre la même règle (préfixes, troncature RRF, calibration).
+- **Modèle LLM local 1B** : qualité limitée ; le harnais d'évaluation (R-13) permettra d'arbitrer un éventuel passage à un modèle plus capable. Le routage **Adaptive** dépend aussi de ce 1B : tant qu'il n'est pas évalué, préférer `Direct` par défaut est une option défendable.
+- **Ré-ingestion obligatoire après R-15** (préfixes `nomic`) : les vecteurs stockés sans préfixe sont incompatibles avec des requêtes préfixées. Prévoir un vidage/ré-upload du corpus (ou un script de ré-ingestion) dans le même lot.
 
-> Prochaine étape suggérée : valider ce plan, puis ouvrir une branche `feat/rag-lot0` pour les correctifs critiques du Lot 0.
+> Prochaine étape suggérée : ouvrir une branche `feat/rag-lot0bis` pour la pertinence de la récupération (points 23 à 28).
 
 ---
 
@@ -735,12 +780,116 @@ foreach (var chunk in rankedChunks) {
 
 **Correctif.** Agréger l'usage si le provider le fournit dans le dernier update, ou estimer via le tokenizer (entrée + sortie accumulée).
 
+## B.5. Nouveaux constats — révision 2026-07-02 (pertinence de la récupération)
+
+> Issus du diagnostic du symptôme observé en usage réel : *des sources sans rapport avec la
+> question remontent dans le panneau Citations, à côté des bonnes sources du PDF.*
+
+#### R-15 — Préfixes de tâche `nomic` absents (ingestion **et** requête)
+
+**Mécanisme.** `nomic-embed-text-v1.5` est un modèle d'embedding **asymétrique** : il a été entraîné
+avec des préfixes de tâche obligatoires — `search_document: <texte>` pour les passages indexés,
+`search_query: <question>` pour les requêtes. `OpenAIEmbeddingService.EmbedAsync`/`EmbedBatchAsync`
+envoient le texte **brut** des deux côtés, et LM Studio n'ajoute aucun préfixe automatiquement.
+
+**Pourquoi c'est grave.** Sans préfixes, les embeddings ne sont pas dans le régime pour lequel le
+modèle est calibré : les scores se compressent et la **séparation pertinent/non-pertinent s'effondre**.
+C'est le candidat n°1 pour expliquer que des chunks hors sujet obtiennent des scores comparables
+aux chunks pertinents.
+
+**Correctif.** Préfixer selon l'usage, piloté par la configuration (aucun préfixe pour OpenAI
+`text-embedding-3-*`, qui est symétrique) :
+
+```csharp
+/// <summary>Préfixes de tâche exigés par certains modèles asymétriques (nomic, e5…).</summary>
+public sealed class EmbeddingPrefixOptions
+{
+    public string DocumentPrefix { get; set; } = "";   // ex. "search_document: "
+    public string QueryPrefix    { get; set; } = "";   // ex. "search_query: "
+}
+```
+
+```csharp
+// Ingestion (EmbedBatchAsync) : texte de passage
+var input = _prefixes.DocumentPrefix + text;
+// Restitution (EmbedAsync appelé avec la question) : texte de requête
+var input = _prefixes.QueryPrefix + text;
+```
+
+> ⚠️ Nécessite de distinguer les deux usages dans `IEmbeddingService` (ex. `EmbedQueryAsync` vs
+> `EmbedDocumentsAsync`) car aujourd'hui `EmbedAsync` sert aux deux (question directe, doc HyDE).
+> ⚠️ **Ré-ingestion du corpus obligatoire** : les vecteurs déjà stockés (sans préfixe) ne sont pas
+> comparables à des requêtes préfixées.
+
+#### R-16 — Fusion : résultat RRF non tronqué, scores incomparables
+
+**Mécanisme.** Dans `RetrieveChunksAsync` (cas `RagStrategy.Fusion`), le retour est
+`ReciprocalRankFusion.Fuse(allResults)` **sans troncature**. `Fuse` renvoie **l'union** de tous les
+chunks uniques des N listes (jusqu'à 4 requêtes × TopK = 40 chunks). De plus, les scores retournés
+sont des scores **RRF** (~0.016 à 0.065), pas des similarités cosinus : le `ScoreThreshold` ne
+s'applique plus, et l'UI affiche ces valeurs minuscules comme si c'étaient des similarités.
+
+**Pourquoi c'est grave.** En stratégie Fusion (choisie par le routeur Adaptive sur les questions
+comparatives), le contexte explose (aggrave R-11), la latence augmente, et le panneau Citations
+affiche des dizaines de sources au score illisible — dont beaucoup de bruit.
+
+**Correctif (2 lignes).**
+
+```csharp
+// Fusion des listes via Reciprocal Rank Fusion, tronquée au TopK configuré
+return ReciprocalRankFusion.Fuse(allResults)
+    .Take(opts.Retrieval.TopK)
+    .ToList();
+```
+
+Et côté restitution, distinguer la nature du score dans la citation (cosinus vs RRF) ou re-normaliser
+avant affichage.
+
+#### R-17 — Flags `Enabled` de la configuration jamais honorés
+
+**Mécanisme.** `HydeOptions.Enabled` et `MultiQueryOptions.Enabled` existent mais ne sont lus
+**nulle part** : le routeur Adaptive peut sélectionner HyDE ou Fusion même si l'opérateur les a
+désactivés dans `appsettings.json`. `CacheOptions.Enabled = true` par défaut alors qu'aucun code de
+cache n'existe (R-8).
+
+**Pourquoi c'est grave.** La configuration ment : on croit pouvoir couper HyDE/Fusion (utile quand
+le modèle 1B génère des documents hypothétiques qui dérivent — pollution de la récupération) mais
+le réglage est sans effet. Un opérateur qui active « le cache » n'obtient rien.
+
+**Correctif.** Dans la résolution de stratégie : si la stratégie résolue est désactivée, repli sur
+`Direct` (+ log). Passer `Cache.Enabled = false` par défaut tant que R-8 n'est pas implémenté.
+
+```csharp
+// Repli si la stratégie résolue est désactivée en configuration
+if (strategy == RagStrategy.HyDE   && !ragOptions.HyDE.Enabled)       strategy = RagStrategy.Direct;
+if (strategy == RagStrategy.Fusion && !ragOptions.MultiQuery.Enabled) strategy = RagStrategy.Direct;
+```
+
+#### R-18 — Citations = tous les chunks récupérés (plus aucun filtre depuis le Lot 0)
+
+**Mécanisme.** Les citations sont construites depuis `contextChunks`, c'est-à-dire **tout** ce que
+la récupération a retourné. Avant le Lot 0, le reranker coupait à `TopKAfterRerank = 5` et la
+compression éliminait les chunks « AUCUN ». Ces deux étapes étant désormais désactivées par défaut
+(à juste titre pour la latence), la chaîne est : Top-K=10 brut → contexte → citations, **sans aucun
+filtre de précision**.
+
+**Pourquoi c'est grave.** C'est la matérialisation visible du problème : même quand le LLM ignore
+les extraits hors sujet dans sa réponse, ils apparaissent dans le panneau Sources avec un score
+plausible. L'utilisateur perd confiance dans les citations.
+
+**Correctif.** Combinaison des points du Lot 0-bis : seuil calibré + TopK réduit (R-10), reranker
+**batché en un appel** réactivé (R-5'), et à terme ne citer que les extraits réellement exploités
+(corrélation réponse ↔ extraits, ou demande au LLM de lister les numéros d'extraits utilisés).
+
 ## C. Synthèse des « 1 ligne, gros impact »
 
-| Point | Correctif minimal | Effet |
-|-------|-------------------|-------|
-| **R-1** | Injecter `DocumentName` au lieu du GUID | Citations textuelles correctes |
-| **R-5/R-6** | `Reranker.Enabled=false`, `ContextCompression.Enabled=false` | Latence ÷ ~20 |
-| **R-3** | Prompts génériques | Réponses non biaisées |
-| **I-17** | Colonne `tsvector` + index GIN | Mode Classique rapide |
-| **I-19** | Cache processeur Whisper par langue | Multilingue correct |
+| Point | Correctif minimal | Effet | Statut |
+|-------|-------------------|-------|--------|
+| **R-1** | Injecter `DocumentName` au lieu du GUID | Citations textuelles correctes | ✅ |
+| **R-5/R-6** | `Reranker.Enabled=false`, `ContextCompression.Enabled=false` | Latence ÷ ~20 | ✅ |
+| **R-3** | Prompts génériques | Réponses non biaisées | ✅ |
+| **I-17** | Colonne `tsvector` + index GIN | Mode Classique rapide | ✅ |
+| **I-19** | Cache processeur Whisper par langue | Multilingue correct | ✅ |
+| **R-15** | Préfixes `search_query:`/`search_document:` (+ ré-ingestion) | Séparation pertinent/hors-sujet restaurée | 🔜 |
+| **R-16** | `.Take(TopK)` après `ReciprocalRankFusion.Fuse` | Contexte/citations bornés en mode Fusion | 🔜 |
+| **R-10** | Seuil calibré (~0.55–0.65 après R-15) + TopK 10→5-6 | Bruit du Top-K filtré | 🔜 |

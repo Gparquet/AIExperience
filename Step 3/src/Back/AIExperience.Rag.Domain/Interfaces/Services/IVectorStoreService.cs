@@ -40,6 +40,24 @@ namespace AIExperience.Rag.Domain.Interfaces.Services
             CancellationToken ct = default);
 
         /// <summary>
+        /// Recherche lexicale PostgreSQL en sémantique OR : un chunk matche dès qu'il contient
+        /// au moins un des mots-clés de la requête (contrairement à <see cref="SearchFullTextAsync"/>
+        /// qui exige la présence de TOUS les mots via <c>plainto_tsquery</c>, trop strict pour une
+        /// question en langage naturel qui ne partage souvent qu'un ou deux mots avec le chunk pertinent).
+        /// Utilisée comme signal lexical complémentaire à la recherche vectorielle dans la fusion hybride RRF.
+        /// </summary>
+        /// <param name="query">Texte de la requête utilisateur.</param>
+        /// <param name="topK">Nombre maximum de résultats.</param>
+        /// <param name="documentIds">Filtre optionnel sur les documents à interroger.</param>
+        /// <param name="ct">Jeton d'annulation.</param>
+        /// <returns>Liste de tuples (chunk, score ts_rank) triée par score décroissant.</returns>
+        Task<IReadOnlyList<(DocumentChunk Chunk, double Score)>> SearchLexicalAsync(
+            string query,
+            int topK = 10,
+            Guid[]? documentIds = null,
+            CancellationToken ct = default);
+
+        /// <summary>
         /// Insère ou met à jour l'embedding d'un chunk dans pgvector.
         /// </summary>
         /// <param name="chunk">Chunk à indexer.</param>
@@ -63,5 +81,14 @@ namespace AIExperience.Rag.Domain.Interfaces.Services
         /// <param name="documentId">Identifiant du document dont supprimer les vecteurs.</param>
         /// <param name="ct">Jeton d'annulation.</param>
         Task DeleteByDocumentIdAsync(Guid documentId, CancellationToken ct = default);
+
+        /// <summary>
+        /// Récupère tous les chunks du corpus (contenu + métadonnées, sans leur embedding).
+        /// Utilisé pour la ré-ingestion (R-15) : ré-embed le contenu déjà extrait/chunké sans repasser
+        /// par l'extraction de texte source.
+        /// </summary>
+        /// <param name="ct">Jeton d'annulation.</param>
+        /// <returns>Tous les chunks du corpus, sans filtre.</returns>
+        Task<IReadOnlyList<DocumentChunk>> GetAllChunksAsync(CancellationToken ct = default);
     }
 }

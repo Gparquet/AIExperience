@@ -12,3 +12,6 @@ public record DocumentResponse(
 
 public record UploadDocumentRequest(
     ChunkingStrategy ChunkingStrategy = ChunkingStrategy.Recursive);
+
+/// <summary>Résultat de la ré-ingestion (R-15) : nombre de chunks ré-embeddés avec le préfixe nomic correct.</summary>
+public record ReembedCorpusResponse(int ChunksReembedded, long DurationMs);

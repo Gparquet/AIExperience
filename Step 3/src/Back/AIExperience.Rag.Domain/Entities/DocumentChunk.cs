@@ -91,4 +91,37 @@ public class DocumentChunk
             EndTime = endTime
         };
     }
+
+    /// <summary>
+    /// Rehydrate un chunk déjà persisté, en conservant son identifiant d'origine.
+    /// À utiliser uniquement pour relire un chunk existant (ex. ré-ingestion R-15 : ré-embed sans
+    /// changer d'identité) — jamais pour créer un nouveau chunk, où <see cref="Create"/> reste la seule voie.
+    /// </summary>
+    /// <param name="id">Identifiant existant du chunk en base.</param>
+    public static DocumentChunk Reconstruct(
+        Guid id,
+        Guid documentId,
+        string content,
+        int chunkIndex,
+        int embeddingDimensions,
+        int? pageNumber = null,
+        string? sectionTitle = null,
+        string? documentName = null,
+        TimeSpan? startTime = null,
+        TimeSpan? endTime = null)
+    {
+        return new DocumentChunk
+        {
+            Id = id,
+            DocumentId = documentId,
+            Content = content,
+            ChunkIndex = chunkIndex,
+            EmbeddingDimensions = embeddingDimensions,
+            PageNumber = pageNumber,
+            SectionTitle = sectionTitle,
+            DocumentName = documentName,
+            StartTime = startTime,
+            EndTime = endTime
+        };
+    }
 }

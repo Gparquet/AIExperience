@@ -74,7 +74,11 @@ public sealed class PgVectorStoreService : IVectorStoreService
 
         while (await reader.ReadAsync(ct))
         {
-            var chunk = DocumentChunk.Create(
+            // Reconstruct (pas Create) : préserve l'id réel de la ligne SQL. Indispensable pour que
+            // la déduplication par Chunk.Id dans ReciprocalRankFusion.Fuse reconnaisse un même chunk
+            // renvoyé par plusieurs recherches (ex. fusion hybride vectoriel + lexical).
+            var chunk = DocumentChunk.Reconstruct(
+                id: reader.GetGuid(0),
                 documentId: reader.GetGuid(1),
                 content: reader.GetString(2),
                 chunkIndex: reader.GetInt32(3),
@@ -141,7 +145,83 @@ public sealed class PgVectorStoreService : IVectorStoreService
 
         while (await reader.ReadAsync(ct))
         {
-            var chunk = DocumentChunk.Create(
+            // Reconstruct (pas Create) : préserve l'id réel — voir commentaire dans SearchAsync.
+            var chunk = DocumentChunk.Reconstruct(
+                id: reader.GetGuid(0),
+                documentId: reader.GetGuid(1),
+                content: reader.GetString(2),
+                chunkIndex: reader.GetInt32(3),
+                embeddingDimensions: reader.GetInt32(6),
+                pageNumber: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                sectionTitle: reader.IsDBNull(5) ? null : reader.GetString(5),
+                documentName: reader.IsDBNull(9) ? null : reader.GetString(9),
+                startTime: reader.IsDBNull(10) ? null : TimeSpan.FromSeconds(reader.GetDouble(10)),
+                endTime: reader.IsDBNull(11) ? null : TimeSpan.FromSeconds(reader.GetDouble(11)));
+
+            results.Add((chunk, reader.GetDouble(8)));
+        }
+
+        return results;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Convertit le AND implicite de <c>plainto_tsquery</c> en OR (remplacement textuel des opérateurs
+    /// tsquery) : une question en langage naturel contient rarement tous ses mots dans un même chunk,
+    /// alors qu'un seul mot-clé distinctif (ex. "chien") suffit à identifier le bon passage.
+    /// </remarks>
+    public async Task<IReadOnlyList<(DocumentChunk Chunk, double Score)>> SearchLexicalAsync(
+        string query,
+        int topK = 10,
+        Guid[]? documentIds = null,
+        CancellationToken ct = default)
+    {
+        var documentFilter = documentIds?.Length > 0
+            ? "AND dc.document_id = ANY(@docIds)"
+            : string.Empty;
+
+        // to_tsquery(replace(plainto_tsquery(...)::text, '&', '|')) : même tokenisation/stemming
+        // que plainto_tsquery, mais les mots sont combinés en OR plutôt qu'en AND.
+        var sql = $"""
+            WITH q AS (
+                SELECT to_tsquery('french', replace(plainto_tsquery('french', @query)::text, ' & ', ' | ')) AS tsq
+            )
+            SELECT dc.id, dc.document_id, dc.content, dc.chunk_index, dc.page_number,
+                   dc.section_title, dc.embedding_dimensions, dc.created_at,
+                   ts_rank(dc.content_tsv, q.tsq)::float8 AS score,
+                   d.file_name,
+                   dc.start_time_seconds, dc.end_time_seconds
+            FROM document_chunks dc
+            JOIN documents d ON d.id = dc.document_id, q
+            WHERE dc.content_tsv @@ q.tsq
+            {documentFilter}
+            ORDER BY score DESC
+            LIMIT @topK
+            """;
+
+        var parameters = new List<object>
+        {
+            new NpgsqlParameter("query", query),
+            new NpgsqlParameter("topK", topK)
+        };
+
+        if (documentIds?.Length > 0)
+            parameters.Add(new NpgsqlParameter("docIds", documentIds));
+
+        var results = new List<(DocumentChunk, double)>();
+
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = sql;
+        foreach (var p in parameters) command.Parameters.Add(p);
+
+        await context.Database.OpenConnectionAsync(ct);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+
+        while (await reader.ReadAsync(ct))
+        {
+            // Reconstruct (pas Create) : préserve l'id réel — voir commentaire dans SearchAsync.
+            var chunk = DocumentChunk.Reconstruct(
+                id: reader.GetGuid(0),
                 documentId: reader.GetGuid(1),
                 content: reader.GetString(2),
                 chunkIndex: reader.GetInt32(3),
@@ -210,4 +290,44 @@ public sealed class PgVectorStoreService : IVectorStoreService
         => await context.Database.ExecuteSqlRawAsync(
             "DELETE FROM document_chunks WHERE document_id = @docId",
             new NpgsqlParameter("docId", documentId));
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<DocumentChunk>> GetAllChunksAsync(CancellationToken ct = default)
+    {
+        // Reconstruct (pas Create) : préserve l'id existant pour que UpsertAsync fasse un UPDATE
+        // en place (ON CONFLICT sur "id") plutôt qu'une duplication du chunk.
+        var sql = """
+            SELECT dc.id, dc.document_id, dc.content, dc.chunk_index, dc.page_number,
+                   dc.section_title, dc.embedding_dimensions, dc.created_at,
+                   d.file_name, dc.start_time_seconds, dc.end_time_seconds
+            FROM document_chunks dc
+            JOIN documents d ON d.id = dc.document_id
+            ORDER BY dc.document_id, dc.chunk_index
+            """;
+
+        var results = new List<DocumentChunk>();
+
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = sql;
+
+        await context.Database.OpenConnectionAsync(ct);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(DocumentChunk.Reconstruct(
+                id: reader.GetGuid(0),
+                documentId: reader.GetGuid(1),
+                content: reader.GetString(2),
+                chunkIndex: reader.GetInt32(3),
+                embeddingDimensions: reader.GetInt32(6),
+                pageNumber: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                sectionTitle: reader.IsDBNull(5) ? null : reader.GetString(5),
+                documentName: reader.IsDBNull(8) ? null : reader.GetString(8),
+                startTime: reader.IsDBNull(9) ? null : TimeSpan.FromSeconds(reader.GetDouble(9)),
+                endTime: reader.IsDBNull(10) ? null : TimeSpan.FromSeconds(reader.GetDouble(10))));
+        }
+
+        return results;
+    }
 }

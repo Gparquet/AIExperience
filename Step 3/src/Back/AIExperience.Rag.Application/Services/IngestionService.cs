@@ -41,7 +41,7 @@ public sealed class IngestionService(
                 "L'extraction de texte a retourné un contenu vide ou non découpable.");
 
         // 3. Embedding + stockage batch dans pgvector (1 transaction pour tous les chunks)
-        var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), ct);
+        var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), EmbeddingTaskType.Document, ct);
 
         // Vérification de cohérence avant l'accès indexé embeddings[i].
         // Le service d'embedding DOIT retourner autant de vecteurs que de textes soumis.
@@ -82,7 +82,7 @@ public sealed class IngestionService(
                 "Le texte fourni est vide ou entièrement non découpable.");
 
         // 2. Embedding + stockage batch dans pgvector (1 transaction pour tous les chunks)
-        var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), ct);
+        var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), EmbeddingTaskType.Document, ct);
 
         // Vérification de cohérence avant l'accès indexé embeddings[i].
         if (embeddings.Count != textChunks.Count)
@@ -121,7 +121,7 @@ public sealed class IngestionService(
                 $"Aucun chunk produit pour le document {documentId} (IngestFromSegmentsAsync). " +
                 "La transcription ne contient aucun segment (vidéo silencieuse ou corrompue ?).");
 
-        var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), ct);
+        var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), EmbeddingTaskType.Document, ct);
 
         // Vérification de cohérence avant l'accès indexé embeddings[i].
         if (embeddings.Count != textChunks.Count)

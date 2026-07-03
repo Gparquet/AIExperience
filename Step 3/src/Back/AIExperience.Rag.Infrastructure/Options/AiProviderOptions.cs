@@ -47,4 +47,11 @@ public sealed class AiProviderOptions
 
     /// <summary>Nombre de dimensions du vecteur d'embedding. 768 pour Ollama, 3072 pour AzureOpenAI/GitHubModels.</summary>
     public int EmbeddingDimensions { get; set; } = 768;
+
+    /// <summary>
+    /// Active les préfixes de tâche "search_document: " / "search_query: " avant embedding (R-15).
+    /// À activer uniquement pour les modèles asymétriques entraînés avec ces préfixes (ex. nomic-embed-text-v1.5).
+    /// Laisser à <c>false</c> pour les modèles symétriques (ex. text-embedding-3-large) où le préfixe n'a pas de sens.
+    /// </summary>
+    public bool EmbeddingTaskPrefixes { get; set; } = false;
 }

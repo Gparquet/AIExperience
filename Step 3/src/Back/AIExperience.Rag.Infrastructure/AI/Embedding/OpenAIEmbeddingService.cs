@@ -1,5 +1,8 @@
+using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Services;
+using AIExperience.Rag.Infrastructure.Options;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using Polly;
 
 namespace AIExperience.Rag.Infrastructure.AI.Embedding;
@@ -23,11 +26,13 @@ public sealed class OpenAIEmbeddingService : IEmbeddingService
 
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly ResiliencePipeline _resiliencePipeline;
+    private readonly AiProviderOptions _aiProviderOptions;
 
     /// <summary>
     /// Initialise le service avec un générateur d'embeddings et un pipeline de résilience optionnel.
     /// </summary>
     /// <param name="embeddingGenerator">Générateur d'embeddings injecté par la DI.</param>
+    /// <param name="aiProviderOptions">Options du provider IA (contrôle notamment <see cref="AiProviderOptions.EmbeddingTaskPrefixes"/>).</param>
     /// <param name="resiliencePipeline">
     /// Pipeline de résilience Polly (retry, backoff). Defaults à <see cref="ResiliencePipeline.Empty"/>
     /// quand omis (pratique pour les tests unitaires sans retry).
@@ -35,17 +40,20 @@ public sealed class OpenAIEmbeddingService : IEmbeddingService
     /// </param>
     public OpenAIEmbeddingService(
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+        IOptions<AiProviderOptions> aiProviderOptions,
         ResiliencePipeline? resiliencePipeline = null)
     {
         _embeddingGenerator = embeddingGenerator;
+        _aiProviderOptions = aiProviderOptions.Value;
         _resiliencePipeline = resiliencePipeline ?? ResiliencePipeline.Empty;
     }
 
     /// <inheritdoc/>
-    public async Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+    public async Task<float[]> EmbedAsync(string text, EmbeddingTaskType taskType, CancellationToken ct = default)
     {
+        var prefixedText = ApplyTaskPrefix(text, taskType);
         var result = await _resiliencePipeline.ExecuteAsync(
-            async token => await _embeddingGenerator.GenerateAsync(text, cancellationToken: token),
+            async token => await _embeddingGenerator.GenerateAsync(prefixedText, cancellationToken: token),
             ct);
         return result.Vector.ToArray();
     }
@@ -59,9 +67,10 @@ public sealed class OpenAIEmbeddingService : IEmbeddingService
     /// </remarks>
     public async Task<IReadOnlyList<float[]>> EmbedBatchAsync(
         IEnumerable<string> texts,
+        EmbeddingTaskType taskType,
         CancellationToken ct = default)
     {
-        var all = texts.ToList();
+        var all = texts.Select(t => ApplyTaskPrefix(t, taskType)).ToList();
         if (all.Count == 0) return [];
 
         var result = new List<float[]>(all.Count);
@@ -77,5 +86,18 @@ public sealed class OpenAIEmbeddingService : IEmbeddingService
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Préfixe le texte selon son rôle (corpus vs requête) si <see cref="AiProviderOptions.EmbeddingTaskPrefixes"/>
+    /// est activé (R-15). Sans ce préfixe, un modèle asymétrique comme nomic-embed-text-v1.5 discrimine
+    /// mal les chunks pertinents des chunks hors-sujet.
+    /// </summary>
+    private string ApplyTaskPrefix(string text, EmbeddingTaskType taskType)
+    {
+        if (!_aiProviderOptions.EmbeddingTaskPrefixes) return text;
+
+        var prefix = taskType == EmbeddingTaskType.Document ? "search_document: " : "search_query: ";
+        return prefix + text;
     }
 }

@@ -373,9 +373,9 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
 
         /// <summary>
         /// Récupère les chunks pertinents selon la stratégie résolue :
-        /// - Direct  : embed la question → recherche cosinus pgvector
-        /// - HyDE    : génère un doc hypothétique → embed ce doc → recherche cosinus
-        /// - Fusion  : génère N reformulations → N recherches parallèles → RRF
+        /// - Direct  : embed la question → recherche cosinus pgvector, fusionnée au full-text (RRF)
+        /// - HyDE    : génère un doc hypothétique → embed ce doc → recherche cosinus, fusionnée au full-text (RRF)
+        /// - Fusion  : génère N reformulations → N recherches vectorielles + 1 full-text → RRF
         /// </summary>
         private async Task<IReadOnlyList<(DocumentChunk Chunk, double Score)>> RetrieveChunksAsync(
             RagQuery query, RagStrategy strategy, RagOptions opts, CancellationToken ct)
@@ -388,9 +388,10 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 {
                     // Génère un doc fictif dont l'embedding est plus proche des vraies réponses que la question brute
                     var hypotheticalDoc = await hydeService.GenerateHypotheticalDocAsync(query.Question, ct);
-                    var hydeVector = await embeddingService.EmbedAsync(hypotheticalDoc, ct);
-                    return await vectorStoreService.SearchAsync(
+                    var hydeVector = await embeddingService.EmbedAsync(hypotheticalDoc, EmbeddingTaskType.Query, ct);
+                    var hydeResult = await vectorStoreService.SearchAsync(
                         hydeVector, opts.Retrieval.TopK, docIds, opts.Retrieval.ScoreThreshold, ct);
+                    return await FuseWithFullTextAsync(query.Question, [hydeResult], docIds, opts, ct);
                 }
 
                 case RagStrategy.Fusion:
@@ -408,23 +409,48 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                     var allResults = new List<IReadOnlyList<(DocumentChunk, double)>>();
                     foreach (var q in allQueries)
                     {
-                        var vector = await embeddingService.EmbedAsync(q, ct);
+                        var vector = await embeddingService.EmbedAsync(q, EmbeddingTaskType.Query, ct);
                         var result = await vectorStoreService.SearchAsync(
                             vector, opts.Retrieval.TopK, docIds, opts.Retrieval.ScoreThreshold, ct);
                         allResults.Add(result);
                     }
 
-                    // Fusion des listes via Reciprocal Rank Fusion
-                    return ReciprocalRankFusion.Fuse(allResults);
+                    // Fusion des listes vectorielles + full-text via Reciprocal Rank Fusion, puis troncature au Top-K
+                    // (sans .Take, Fuse peut retourner jusqu'à N requêtes × TopK chunks distincts)
+                    return await FuseWithFullTextAsync(query.Question, allResults, docIds, opts, ct);
                 }
 
                 default: // RagStrategy.Direct
                 {
-                    var directVector = await embeddingService.EmbedAsync(query.Question, ct);
-                    return await vectorStoreService.SearchAsync(
+                    var directVector = await embeddingService.EmbedAsync(query.Question, EmbeddingTaskType.Query, ct);
+                    var directResult = await vectorStoreService.SearchAsync(
                         directVector, opts.Retrieval.TopK, docIds, opts.Retrieval.ScoreThreshold, ct);
+                    return await FuseWithFullTextAsync(query.Question, [directResult], docIds, opts, ct);
                 }
             }
+        }
+
+        /// <summary>
+        /// Fusionne des listes de résultats vectoriels avec une recherche lexicale (tsvector, sémantique OR)
+        /// sur la question brute. Sur un corpus hétérogène, le cosinus seul discrimine mal les chunks pertinents
+        /// (les scores se tassent tous autour de 0.6-0.7) : un chunk contenant un mot-clé distinctif (ex. "chien")
+        /// peut se classer très loin derrière des chunks hors-sujet et ne jamais entrer dans le Top-K vectoriel.
+        /// <see cref="IVectorStoreService.SearchLexicalAsync"/> (OR) est utilisé plutôt que
+        /// <see cref="IVectorStoreService.SearchFullTextAsync"/> (AND) : une question en langage naturel
+        /// contient rarement TOUS ses mots dans le même chunk, l'AND retournerait alors 0 résultat.
+        /// RRF est utilisé (plutôt qu'une moyenne de scores) car les échelles de score cosinus et ts_rank
+        /// ne sont pas comparables — seul le rang de chaque chunk dans sa liste d'origine compte.
+        /// </summary>
+        private async Task<IReadOnlyList<(DocumentChunk Chunk, double Score)>> FuseWithFullTextAsync(
+            string question,
+            IReadOnlyList<IReadOnlyList<(DocumentChunk Chunk, double Score)>> vectorResults,
+            Guid[]? docIds,
+            RagOptions opts,
+            CancellationToken ct)
+        {
+            var lexicalResult = await vectorStoreService.SearchLexicalAsync(question, opts.Retrieval.TopK, docIds, ct);
+            var allLists = vectorResults.Append(lexicalResult);
+            return ReciprocalRankFusion.Fuse(allLists).Take(opts.Retrieval.TopK).ToList();
         }
 
         /// <summary>
