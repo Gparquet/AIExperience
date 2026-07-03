@@ -31,24 +31,59 @@ public sealed class JsonTextExtractor : ITextExtractor
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                foreach (var property in element.EnumerateObject())
+                // Traiter les objets vides explicitement pour éviter les pertes de données en RAG.
+                if (element.EnumerateObject().Count() == 0)
                 {
-                    var childPath = string.IsNullOrEmpty(path) ? property.Name : $"{path}.{property.Name}";
-                    Flatten(property.Value, childPath, sb);
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        sb.AppendLine($"{path}: {{}}");
+                    }
+                }
+                else
+                {
+                    foreach (var property in element.EnumerateObject())
+                    {
+                        var childPath = string.IsNullOrEmpty(path) ? property.Name : $"{path}.{property.Name}";
+                        Flatten(property.Value, childPath, sb);
+                    }
                 }
                 break;
 
             case JsonValueKind.Array:
-                int index = 0;
-                foreach (var item in element.EnumerateArray())
+                // Traiter les tableaux vides explicitement pour éviter les pertes de données en RAG.
+                if (element.EnumerateArray().Count() == 0)
                 {
-                    Flatten(item, $"{path}[{index}]", sb);
-                    index++;
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        sb.AppendLine($"{path}: []");
+                    }
+                }
+                else
+                {
+                    int index = 0;
+                    foreach (var item in element.EnumerateArray())
+                    {
+                        Flatten(item, $"{path}[{index}]", sb);
+                        index++;
+                    }
                 }
                 break;
 
+            // Traiter explicitement les valeurs primitives pour garantir une sérialisation correcte.
+            case JsonValueKind.True:
+                sb.AppendLine($"{path}: true");
+                break;
+
+            case JsonValueKind.False:
+                sb.AppendLine($"{path}: false");
+                break;
+
+            case JsonValueKind.Null:
+                sb.AppendLine($"{path}: null");
+                break;
+
             default:
-                // String/Number/True/False/Null : ToString() retourne la représentation textuelle adaptée.
+                // String/Number : ToString() retourne la représentation textuelle adaptée.
                 sb.AppendLine($"{path}: {element}");
                 break;
         }
