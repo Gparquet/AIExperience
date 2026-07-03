@@ -60,6 +60,7 @@ namespace AIExperience.Rag.Application
             services.AddSingleton<ITextExtractor, PlainTextExtractor>();
             services.AddSingleton<ITextExtractor, JsonTextExtractor>();
             services.AddSingleton<ITextExtractor, DocxTextExtractor>();
+            services.AddSingleton<ITextExtractor, PowerPointTextExtractor>();
             // VideoTextExtractor dépend de IVideoProcessorService + ITranscriptionService (Infrastructure Singletons)
             services.AddSingleton<ITextExtractor, VideoTextExtractor>();
             services.AddSingleton<ICompositeTextExtractor, CompositeTextExtractor>();
