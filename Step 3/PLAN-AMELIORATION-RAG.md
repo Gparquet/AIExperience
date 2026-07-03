@@ -8,7 +8,8 @@
 > constats R-15 à R-18 (pertinence de la récupération) et insertion du **Lot 0-bis**.
 > **Révision : 2026-07-03** — R-15/R-16/R-9 livrés. R-10 mesuré empiriquement **non viable** (le
 > seuil cosinus ne discrimine pas signal/bruit sur ce corpus, cf. §4.5) → déprioritisé au profit de
-> **R-18** (reranker batché), qui devient le prochain correctif du Lot 0-bis.
+> **R-18** (reranker batché), livré (commit `69b8282`). **R-17 livré** (`RagStrategyResolver` +
+> `Cache.Enabled=false` par défaut) → **Lot 0-bis 100 % livré**.
 
 ---
 
@@ -33,7 +34,7 @@ LLM coûteuses sont activées par défaut sans batching.
 |-----|--------|--------|
 | **Lot 0** — quick wins critiques | ✅ **Livré** (R-1, R-3, R-4, R-5/R-6 défauts, I-1, I-3, I-19 + tests) | commit `4a9dbb7` (28/06) |
 | **Lot 1** — robustesse ingestion | 🟨 **~80 % livré** (I-5, I-7, I-8, I-9 partiel, I-11, I-12, I-17, I-18) — reste : taille en tokens (I-9), I-10, I-13, I-14, I-15 | commits `f18c79a`, `61b20bc`, `f12b23a`, `742f59d` (02/07) |
-| **Lot 0-bis** — pertinence de la récupération | 🟨 **En cours** — R-15/R-16/R-9 ✅ livrés (fusion hybride RRF), R-10 mesuré non viable et déprioritisé, **R-18 (reranker batché) en cours** | commit `96a141a` (03/07) + §4.5 |
+| **Lot 0-bis** — pertinence de la récupération | ✅ **100 % livré** — R-15/R-16/R-9/R-18/R-17 livrés, R-10 mesuré non viable et déprioritisé | commits `96a141a`, `69b8282` (03/07) + §4.5 |
 | **Lots 2, 3, 4** | ⏳ Non commencés | — |
 
 > ⚠️ **Effet de bord du Lot 0, non anticipé** : la désactivation du reranker (R-5) a supprimé la
@@ -174,7 +175,7 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 25. **R-10 Calibrer le seuil et le Top-K** : mesurer la distribution réelle des scores sur le corpus (question pertinente vs hors sujet), remonter `ScoreThreshold` en conséquence (ordre de grandeur 0.55–0.65 pour `nomic`, **après** R-15), et baisser `TopK` 10 → 5-6 tant qu'aucun reranker ne filtre derrière. Régler `hnsw.ef_search`. *Impact 4 / S.*
 26. **R-5' Reranker batché** *(remonté du Lot 3, point 15)* : **un seul** appel LLM qui note tous les chunks (JSON `{index: score}`) au lieu de N appels séquentiels — restaure le filtre de précision perdu au Lot 0 sans réintroduire la latence. Réactiver `Reranker.Enabled = true` une fois batché. *Impact 5 / M.*
 27. **R-9 Recherche hybride** *(remontée du Lot 3, point 16)* : vectoriel + full-text fusionnés via le RRF existant. *Impact 4 / M.*
-28. **R-17 Honorer les flags de config** : consulter `HyDE.Enabled` / `MultiQuery.Enabled` dans le pipeline (repli sur Direct si désactivé) ; passer `Cache.Enabled = false` par défaut tant que le cache n'est pas implémenté (R-8). *Impact 2 / S.*
+28. ✅ **R-17 Honorer les flags de config** : consulter `HyDE.Enabled` / `MultiQuery.Enabled` dans le pipeline (repli sur Direct si désactivé) ; passer `Cache.Enabled = false` par défaut tant que le cache n'est pas implémenté (R-8). *Impact 2 / S.* **Livré (03/07)** : `RagStrategyResolver.ResolveFallback` (statique, testable sans mock) appliqué dans `RagPipelineService.ResolveStrategyAsync` (log `Warning` si repli), `CacheOptions.Enabled` par défaut `false`. 6 nouveaux tests (87/87).
 
 > **Vérification avant/après (mini R-13)** : constituer 5–10 questions « golden » sur le corpus
 > actuel et comparer les citations retournées avant et après chaque correctif du lot — sinon la
@@ -207,7 +208,7 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 ```
 Semaine 1 : Lot 0 (quick wins critiques) ─────────────► ✅ LIVRÉ (28/06)
 Semaine 2 : Lot 1 (robustesse ingestion) ─────────────► 🟨 ~80 % LIVRÉ (02/07)
-Semaine 3 : Lot 0-bis (pertinence récupération) ──────► 🔜 PROCHAIN — corrige les sources hors sujet
+Semaine 3 : Lot 0-bis (pertinence récupération) ──────► ✅ LIVRÉ (03/07) — corrige les sources hors sujet
 Semaine 4-5 : Lot 2 (multi-format) ‖ Lot 3 (restitution restante) en parallèle
 Continu   : Lot 4 (async, observabilité, évaluation) + reliquat Lot 1
 ```
@@ -227,7 +228,7 @@ Continu   : Lot 4 (async, observabilité, évaluation) + reliquat Lot 1
 - **Modèle LLM local 1B** : qualité limitée ; le harnais d'évaluation (R-13) permettra d'arbitrer un éventuel passage à un modèle plus capable. Le routage **Adaptive** dépend aussi de ce 1B : tant qu'il n'est pas évalué, préférer `Direct` par défaut est une option défendable.
 - **Ré-ingestion obligatoire après R-15** (préfixes `nomic`) : les vecteurs stockés sans préfixe sont incompatibles avec des requêtes préfixées. Prévoir un vidage/ré-upload du corpus (ou un script de ré-ingestion) dans le même lot.
 
-> Prochaine étape suggérée : ouvrir une branche `feat/rag-lot0bis` pour la pertinence de la récupération (points 23 à 28).
+> Lot 0-bis (points 23 à 28) livré en travaillant directement sur `main`. Prochaine étape suggérée : Lot 2 (multi-format) ou Lot 3 (restitution restante — R-2, R-11, R-4/R-8) selon la priorité opérationnelle.
 
 ---
 
@@ -848,7 +849,7 @@ return ReciprocalRankFusion.Fuse(allResults)
 Et côté restitution, distinguer la nature du score dans la citation (cosinus vs RRF) ou re-normaliser
 avant affichage.
 
-#### R-17 — Flags `Enabled` de la configuration jamais honorés
+#### R-17 — Flags `Enabled` de la configuration jamais honorés ✅ livré (03/07)
 
 **Mécanisme.** `HydeOptions.Enabled` et `MultiQueryOptions.Enabled` existent mais ne sont lus
 **nulle part** : le routeur Adaptive peut sélectionner HyDE ou Fusion même si l'opérateur les a
@@ -929,5 +930,6 @@ contenu pertinent.
 | **R-15** | Préfixes `search_query:`/`search_document:` (+ ré-ingestion) | Séparation pertinent/hors-sujet restaurée | ✅ |
 | **R-16** | `.Take(TopK)` après `ReciprocalRankFusion.Fuse` | Contexte/citations bornés en mode Fusion | ✅ |
 | **R-9** | Fusion hybride vectoriel + lexical (RRF) | 11/12 questions test retrouvent le bon doc en rang 1 (mesuré 03/07) | ✅ |
-| **R-18** | Reranker LLM **batché en 1 appel** (au lieu de N séquentiels) | Filtre de bruit exploitable sans latence catastrophique | 🔜 **en cours** |
+| **R-18** | Reranker LLM **batché en 1 appel** (au lieu de N séquentiels) + masquage citations 0% | Filtre de bruit exploitable sans latence catastrophique | ✅ |
 | **R-10** | ~~Seuil calibré~~ — mesuré non discriminant sur ce corpus (§4.5) | — | ❌ déprioritisé |
+| **R-17** | `RagStrategyResolver` : repli Direct si `HyDE.Enabled`/`MultiQuery.Enabled=false` ; `Cache.Enabled=false` par défaut | Config non trompeuse | ✅ |

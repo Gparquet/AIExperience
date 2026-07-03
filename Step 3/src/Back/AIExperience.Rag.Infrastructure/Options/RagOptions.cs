@@ -85,8 +85,12 @@ public sealed class ContextCompressionOptions
 /// <summary>Options pour le cache Redis des réponses RAG.</summary>
 public sealed class CacheOptions
 {
-    /// <summary>Active ou désactive le cache. Par défaut : true.</summary>
-    public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// Active ou désactive le cache. Par défaut : <c>false</c>.
+    /// Aucune implémentation de cache n'existe encore (R-8) : laisser à <c>true</c> par défaut
+    /// ferait croire à tort qu'un cache est actif. (Constat R-17 du plan Lot 0-bis)
+    /// </summary>
+    public bool Enabled { get; set; } = false;
 
     /// <summary>Durée de vie des entrées en cache (en minutes). Par défaut : 60.</summary>
     public int TtlMinutes { get; set; } = 60;

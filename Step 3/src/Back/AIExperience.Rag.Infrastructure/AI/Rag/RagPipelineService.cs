@@ -7,6 +7,7 @@ using AIExperience.Rag.Domain.Models;
 using AIExperience.Rag.Infrastructure.AI.Rag.PromptTemplates;
 using AIExperience.Rag.Infrastructure.Options;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel.ChatCompletion;
 using System.Diagnostics;
@@ -34,8 +35,28 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
         IContextCompressorService contextCompressorService,
         IConversationRepository conversationRepository,
         IOptions<RagOptions> options,
-        IChatClient chatClient) : IRagPipelineService
+        IChatClient chatClient,
+        ILogger<RagPipelineService> logger) : IRagPipelineService
     {
+        /// <summary>
+        /// Résout la stratégie de la requête (routage Adaptive si demandé) puis applique les flags
+        /// <c>Enabled</c> de configuration (R-17) : replie sur Direct si HyDE/Fusion sont désactivés.
+        /// </summary>
+        private async Task<RagStrategy> ResolveStrategyAsync(RagQuery query, RagOptions ragOptions, CancellationToken ct)
+        {
+            var routedStrategy = query.Strategy == RagStrategy.Adaptive
+                ? await adaptiveQueryRouter.GetRagStrategyAsync(query.Question, ct)
+                : query.Strategy;
+
+            var resolvedStrategy = RagStrategyResolver.ResolveFallback(routedStrategy, ragOptions);
+            if (resolvedStrategy != routedStrategy)
+                logger.LogWarning(
+                    "Stratégie {RoutedStrategy} désactivée en configuration — repli sur {ResolvedStrategy}",
+                    routedStrategy, resolvedStrategy);
+
+            return resolvedStrategy;
+        }
+
         /// <inheritdoc/>
         public async Task<RagResponse> AskAsync(RagQuery query, CancellationToken ct = default)
         {
@@ -50,10 +71,8 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             if (!query.UseRag)
                 return await AskDirectLlmAsync(query, sw, ct);
 
-            // 1. Résolution de la stratégie
-            var strategy = query.Strategy == RagStrategy.Adaptive
-                ? await adaptiveQueryRouter.GetRagStrategyAsync(query.Question, ct)
-                : query.Strategy;
+            // 1. Résolution de la stratégie (routage Adaptive + repli si HyDE/Fusion désactivés)
+            var strategy = await ResolveStrategyAsync(query, ragOptions, ct);
 
             // 2. Récupération des chunks selon la stratégie résolue
             var rankedChunks = await RetrieveChunksAsync(query, strategy, ragOptions, ct);
@@ -152,10 +171,8 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 yield break;
             }
 
-            // 1. Résolution de la stratégie
-            var strategy = query.Strategy == RagStrategy.Adaptive
-                ? await adaptiveQueryRouter.GetRagStrategyAsync(query.Question, ct)
-                : query.Strategy;
+            // 1. Résolution de la stratégie (routage Adaptive + repli si HyDE/Fusion désactivés, R-17)
+            var strategy = await ResolveStrategyAsync(query, ragOptions, ct);
 
             // 2. Récupération des chunks selon la stratégie résolue
             var rankedChunks = await RetrieveChunksAsync(query, strategy, ragOptions, ct);

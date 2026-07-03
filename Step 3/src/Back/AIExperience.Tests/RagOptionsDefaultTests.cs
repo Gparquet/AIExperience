@@ -55,4 +55,15 @@ public sealed class RagOptionsDefaultTests
     {
         _sut.Retrieval.ScoreThreshold.Should().BeInRange(0.0, 1.0);
     }
+
+    // ── R-17 : Cache ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Cache_DefaultEnabled_IsFalse()
+    {
+        // Aucune implémentation de cache n'existe (R-8) : Enabled=true par défaut
+        // ferait croire à tort qu'un cache est actif.
+        _sut.Cache.Enabled.Should().BeFalse(
+            because: "le cache n'est pas implémenté, la config ne doit pas prétendre le contraire");
+    }
 }
