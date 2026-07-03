@@ -70,19 +70,26 @@ public static class RagPrompts
         """;
 
     /// <summary>
-    /// Prompt pour le reclassement d'un chunk par pertinence réelle (Reranker LLM).
-    /// Le LLM retourne un entier 0-10 qui est ensuite normalisé en score 0.0-1.0.
+    /// Prompt pour le reclassement **batché** de tous les extraits candidats en un seul appel LLM
+    /// (correctif R-18/R-5' : remplace N appels séquentiels — 1 par chunk — par 1 seul appel listant
+    /// tous les extraits numérotés). Réduit drastiquement la latence du reranking sur un modèle local.
+    /// Le format de sortie strict "numéro:score" est parsé par <see cref="BatchedRerankResponseParser"/>.
     /// </summary>
-    public const string Reranker = """
-        Évalue la pertinence de l'extrait suivant pour répondre à la question donnée.
-        Réponds UNIQUEMENT avec un nombre entier entre 0 et 10.
-        (0 = totalement hors sujet, 10 = répond parfaitement à la question)
-        Aucune explication, juste le chiffre.
+    public const string RerankerBatch = """
+        Tu évalues la pertinence de plusieurs extraits de documents par rapport à une question.
+        Pour CHAQUE extrait numéroté ci-dessous, attribue un score entier de 0 à 10
+        (0 = totalement hors sujet, 10 = répond parfaitement à la question).
+
+        Réponds UNIQUEMENT avec une ligne par extrait, au format strict "numéro:score", sans explication.
+        Exemple pour 3 extraits :
+        1:7
+        2:0
+        3:9
 
         Question : {question}
 
-        Extrait :
-        {chunk}
+        Extraits à évaluer :
+        {chunks}
         """;
 
     /// <summary>

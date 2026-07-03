@@ -74,4 +74,28 @@ public sealed class RagPromptsTests
         RagPrompts.RagUser.Should().Contain("{question}",
             because: "le template utilisateur doit exposer le placeholder {question}");
     }
+
+    // ── R-18 : Reranker batché ────────────────────────────────────────────────
+
+    [Fact]
+    public void RerankerBatch_ContainsQuestionPlaceholder()
+    {
+        RagPrompts.RerankerBatch.Should().Contain("{question}",
+            because: "le prompt batché doit exposer le placeholder {question}");
+    }
+
+    [Fact]
+    public void RerankerBatch_ContainsChunksPlaceholder()
+    {
+        RagPrompts.RerankerBatch.Should().Contain("{chunks}",
+            because: "le prompt batché doit exposer le placeholder {chunks} listant tous les extraits");
+    }
+
+    [Fact]
+    public void RerankerBatch_InstructsStrictOutputFormat()
+    {
+        // Le format "numéro:score" est indispensable au parsing par BatchedRerankResponseParser.
+        RagPrompts.RerankerBatch.Should().ContainEquivalentOf("numéro:score",
+            because: "le prompt doit imposer le format attendu par le parseur");
+    }
 }

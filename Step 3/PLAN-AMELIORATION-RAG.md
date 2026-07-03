@@ -6,6 +6,9 @@
 > Date d'analyse : 2026-06-26 — Périmètre : `Step 3/src/Back` + `Step 3/src/Front`.
 > **Révision : 2026-07-02** — mise à jour d'avancement (Lot 0 ✅, Lot 1 ~80 %), ajout des
 > constats R-15 à R-18 (pertinence de la récupération) et insertion du **Lot 0-bis**.
+> **Révision : 2026-07-03** — R-15/R-16/R-9 livrés. R-10 mesuré empiriquement **non viable** (le
+> seuil cosinus ne discrimine pas signal/bruit sur ce corpus, cf. §4.5) → déprioritisé au profit de
+> **R-18** (reranker batché), qui devient le prochain correctif du Lot 0-bis.
 
 ---
 
@@ -24,13 +27,13 @@ Le fil rouge : **la chaîne « page → section → citation » est rompue** et 
 et peu fiable** parce que les métadonnées de structure ne sont jamais propagées et que les étapes
 LLM coûteuses sont activées par défaut sans batching.
 
-### Avancement (révision 2026-07-02)
+### Avancement (révision 2026-07-03)
 
 | Lot | Statut | Preuve |
 |-----|--------|--------|
 | **Lot 0** — quick wins critiques | ✅ **Livré** (R-1, R-3, R-4, R-5/R-6 défauts, I-1, I-3, I-19 + tests) | commit `4a9dbb7` (28/06) |
 | **Lot 1** — robustesse ingestion | 🟨 **~80 % livré** (I-5, I-7, I-8, I-9 partiel, I-11, I-12, I-17, I-18) — reste : taille en tokens (I-9), I-10, I-13, I-14, I-15 | commits `f18c79a`, `61b20bc`, `f12b23a`, `742f59d` (02/07) |
-| **Lot 0-bis** — pertinence de la récupération (**nouveau**) | 🔜 **Prochain lot à exécuter** — répond au symptôme « sources hors sujet dans le chat » | §4, constats R-15 à R-18 |
+| **Lot 0-bis** — pertinence de la récupération | 🟨 **En cours** — R-15/R-16/R-9 ✅ livrés (fusion hybride RRF), R-10 mesuré non viable et déprioritisé, **R-18 (reranker batché) en cours** | commit `96a141a` (03/07) + §4.5 |
 | **Lots 2, 3, 4** | ⏳ Non commencés | — |
 
 > ⚠️ **Effet de bord du Lot 0, non anticipé** : la désactivation du reranker (R-5) a supprimé la
@@ -877,9 +880,42 @@ filtre de précision**.
 les extraits hors sujet dans sa réponse, ils apparaissent dans le panneau Sources avec un score
 plausible. L'utilisateur perd confiance dans les citations.
 
-**Correctif.** Combinaison des points du Lot 0-bis : seuil calibré + TopK réduit (R-10), reranker
-**batché en un appel** réactivé (R-5'), et à terme ne citer que les extraits réellement exploités
-(corrélation réponse ↔ extraits, ou demande au LLM de lister les numéros d'extraits utilisés).
+**Correctif.** Reranker **batché en un appel** (R-5'), et à terme ne citer que les extraits
+réellement exploités (corrélation réponse ↔ extraits, ou demande au LLM de lister les numéros
+d'extraits utilisés). R-10 (seuil calibré) est **retiré du correctif** — voir §4.5, mesuré non
+discriminant sur ce corpus.
+
+### §4.5 — R-10 mesuré non viable (révision 2026-07-03)
+
+**Méthode.** Mesure directe en SQL (cosinus pgvector hors pipeline, puis simulation exacte du
+pipeline hybride RRF avec `K=60`) sur 12 questions couvrant les 4 documents du corpus réel
+ré-ingéré (après R-15).
+
+**Résultat n°1 — recherche vectorielle seule.** Sur 5 questions test, 3 ont le meilleur chunk
+« bruit » **au-dessus** du meilleur chunk pertinent (plages qui se chevauchent totalement :
+pertinent 0.68–0.79, bruit 0.68–0.76). Aucun seuil ne sépare proprement signal et bruit en score
+brut sur ce corpus avec `nomic-embed-text`.
+
+**Résultat n°2 — pipeline hybride réel (R-9, déjà livré).** En simulant exactement
+`FuseWithFullTextAsync` (vectoriel TopK=10 + lexical TopK=10 → RRF → `Take(10)`), **11/12 questions
+retrouvent le bon document en rang 1** du résultat fusionné. La fusion par **rang** (pas par score)
+contourne le problème de score compressé — R-9 fait l'essentiel du travail, pas un futur seuil.
+Seul échec : une question générique (« montant total facturé ») dont le document (1 seul chunk
+très court) a un rang lexical réel de 31/100, hors de portée même avec `TopK` lexical élargi à 30.
+
+**Résultat n°3 — décisif.** Des questions **totalement hors-sujet** (capitale de la Mongolie,
+recette de tarte tatin, règles des échecs) scorent **0.69–0.71** en cosinus — strictement la même
+plage que les chunks pertinents et le bruit du corpus. `nomic-embed-text` compresse toutes les
+similarités dans une bande étroite (~0.65–0.80) indépendamment de la pertinence réelle sur ce
+corpus. **Aucune valeur de `ScoreThreshold` ne peut donc servir de garde-fou « aucun document
+pertinent » non plus.**
+
+**Conclusion actionnable.** R-10 tel qu'écrit initialement (calibrer `ScoreThreshold` 0.55–0.65)
+est déprioritisé : la métrique cosinus brute n'a pas le pouvoir discriminant nécessaire avec ce
+modèle sur ce corpus, calibrer plus finement ne changerait rien. Le prochain gain mesurable vient
+de **R-18** (reranker cross-encoder/LLM) : seul mécanisme capable de produire un score de
+pertinence sémantiquement interprétable pour filtrer le bruit résiduel et détecter l'absence de
+contenu pertinent.
 
 ## C. Synthèse des « 1 ligne, gros impact »
 
@@ -890,6 +926,8 @@ plausible. L'utilisateur perd confiance dans les citations.
 | **R-3** | Prompts génériques | Réponses non biaisées | ✅ |
 | **I-17** | Colonne `tsvector` + index GIN | Mode Classique rapide | ✅ |
 | **I-19** | Cache processeur Whisper par langue | Multilingue correct | ✅ |
-| **R-15** | Préfixes `search_query:`/`search_document:` (+ ré-ingestion) | Séparation pertinent/hors-sujet restaurée | 🔜 |
-| **R-16** | `.Take(TopK)` après `ReciprocalRankFusion.Fuse` | Contexte/citations bornés en mode Fusion | 🔜 |
-| **R-10** | Seuil calibré (~0.55–0.65 après R-15) + TopK 10→5-6 | Bruit du Top-K filtré | 🔜 |
+| **R-15** | Préfixes `search_query:`/`search_document:` (+ ré-ingestion) | Séparation pertinent/hors-sujet restaurée | ✅ |
+| **R-16** | `.Take(TopK)` après `ReciprocalRankFusion.Fuse` | Contexte/citations bornés en mode Fusion | ✅ |
+| **R-9** | Fusion hybride vectoriel + lexical (RRF) | 11/12 questions test retrouvent le bon doc en rang 1 (mesuré 03/07) | ✅ |
+| **R-18** | Reranker LLM **batché en 1 appel** (au lieu de N séquentiels) | Filtre de bruit exploitable sans latence catastrophique | 🔜 **en cours** |
+| **R-10** | ~~Seuil calibré~~ — mesuré non discriminant sur ce corpus (§4.5) | — | ❌ déprioritisé |

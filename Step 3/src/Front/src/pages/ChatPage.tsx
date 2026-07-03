@@ -279,7 +279,13 @@ export default function ChatPage() {
           </div>
         )}
 
-        {messages.map((msg, i) => (
+        {messages.map((msg, i) => {
+          // Un extrait noté 0/10 par le reranker LLM  est un faux positif du cosinus
+          // explicitement écarté par le LLM : l'afficher à "0.0 %" dans le panneau Sources
+          // sème le doute alors qu'il ne doit tout simplement pas apparaître comme source.
+          const visibleCitations = (msg.citations ?? []).filter((c) => c.score > 0);
+
+          return (
           <div key={i} className={`message message-${msg.role}`}>
             {msg.role === 'user' ? (
               <div className="message-bubble">
@@ -331,11 +337,11 @@ export default function ChatPage() {
               /* Affichage "RAG + LLM" — bulle avec citations enrichies */
               <div className="message-bubble">
                 <p>{msg.content}</p>
-                {msg.citations && msg.citations.length > 0 && (
+                {visibleCitations.length > 0 && (
                   <details className="citations">
-                    <summary>{msg.citations.length} source(s)</summary>
+                    <summary>{visibleCitations.length} source(s)</summary>
                     <ul>
-                      {msg.citations.map((c, j) => (
+                      {visibleCitations.map((c, j) => (
                         <li key={j}>
                           <div className="citation-header">
                             <strong>{c.documentName}</strong>
@@ -363,7 +369,8 @@ export default function ChatPage() {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
 
         {loading && (
           <div className="message message-assistant">
