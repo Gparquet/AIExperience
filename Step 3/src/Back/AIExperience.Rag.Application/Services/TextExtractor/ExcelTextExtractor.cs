@@ -6,7 +6,9 @@ namespace AIExperience.Rag.Application.Services.TextExtractor;
 
 /// <summary>
 /// Extracteur pour les classeurs Excel (.xlsx, via ClosedXML) et les fichiers CSV
-/// (parseur RFC 4180 minimal fait maison, pour éviter une dépendance CsvHelper supplémentaire).
+/// (parseur CSV minimal fait maison, pour éviter une dépendance CsvHelper supplémentaire).
+/// Gère les champs entre guillemets et les guillemets échappés (RFC 4180), mais requiert
+/// que les champs entre guillemets ne s'étendent pas sur plusieurs lignes physiques.
 /// Implémente <see cref="IPageAwareTextExtractor"/> : chaque feuille .xlsx devient une "page" ;
 /// un .csv est traité comme une page unique.
 /// </summary>
@@ -121,8 +123,10 @@ public sealed class ExcelTextExtractor : IPageAwareTextExtractor
     }
 
     /// <summary>
-    /// Parseur CSV minimal conforme RFC 4180 : gère les champs entre guillemets contenant
+    /// Parseur CSV minimal pour RFC 4180 : gère les champs entre guillemets contenant
     /// des virgules ou des guillemets échappés (""), sans dépendance externe (I-2 : évite CsvHelper).
+    /// Limitation : les champs entre guillemets ne peuvent pas s'étendre sur plusieurs lignes physiques,
+    /// car le fichier est scindé par <see cref="File.ReadAllLines"/> avant le parsing des lignes.
     /// </summary>
     private static List<string> ParseCsvLine(string line)
     {

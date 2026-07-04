@@ -5,7 +5,7 @@ namespace AIExperience.Rag.Application.Document.Command;
 public sealed class UploadDocumentValidator : AbstractValidator<UploadDocumentCommand>
 {
     private static readonly string[] AllowedExtensions =
-        [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".txt",
+        [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".txt", ".csv", ".pptx", ".md", ".json",
          ".mp4", ".mkv", ".webm", ".avi", ".mov",          // vidéo
          ".wav", ".mp3", ".m4a", ".ogg", ".flac"];          // audio
 
@@ -17,6 +17,10 @@ public sealed class UploadDocumentValidator : AbstractValidator<UploadDocumentCo
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "application/vnd.ms-excel",
         "text/plain",
+        "text/csv",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "text/markdown", "text/x-markdown",
+        "application/json",
         // Vidéo
         "video/mp4", "video/x-matroska", "video/webm", "video/avi", "video/quicktime",
         // Audio
