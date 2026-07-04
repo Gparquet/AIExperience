@@ -86,4 +86,46 @@ public sealed class CompositeTextExtractorTests
         public Task<string> ExtractTextAsync(string filePath, CancellationToken cancellationToken)
             => Task.FromResult(content);
     }
+
+    // ── Dispatch de bout en bout avec les extracteurs réels (I-2) ────────────────
+
+    [Theory]
+    [InlineData("rapport.docx")]
+    [InlineData("classeur.xlsx")]
+    [InlineData("export.csv")]
+    [InlineData("presentation.pptx")]
+    [InlineData("notes.txt")]
+    [InlineData("readme.md")]
+    [InlineData("data.json")]
+    public void ResolveExtractor_AllNewFormats_HasMatchingExtractor(string fileName)
+    {
+        // Arrange — tous les extracteurs réels enregistrés (hors vidéo, qui a des dépendances Infrastructure)
+        var sut = new CompositeTextExtractor(
+            [
+                new PdfTextExtractor(),
+                new HtmlTextExtractor(),
+                new PlainTextExtractor(),
+                new JsonTextExtractor(),
+                new DocxTextExtractor(),
+                new PowerPointTextExtractor(),
+                new ExcelTextExtractor()
+            ],
+            NullLogger<CompositeTextExtractor>.Instance);
+
+        // Act + Assert — ne doit PAS lever NotSupportedException (un extracteur gère bien le format)
+        var act = async () => await sut.ExtractTextAsync(fileName, CancellationToken.None);
+        // On s'attend à une autre exception (fichier introuvable/invalide) mais jamais NotSupportedException.
+        act.Should().NotThrowAsync<NotSupportedException>();
+    }
+
+    [Fact]
+    public async Task ExtractTextAsync_UnknownExtension_ErrorMessageListsSupportedFormats()
+    {
+        var sut = new CompositeTextExtractor([], NullLogger<CompositeTextExtractor>.Instance);
+
+        var act = async () => await sut.ExtractTextAsync("fichier.xyz", CancellationToken.None);
+
+        await act.Should().ThrowAsync<NotSupportedException>()
+            .WithMessage("*docx*");
+    }
 }

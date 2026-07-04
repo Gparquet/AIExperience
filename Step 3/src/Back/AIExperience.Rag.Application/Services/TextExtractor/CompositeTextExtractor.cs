@@ -71,6 +71,6 @@ public sealed class CompositeTextExtractor : ICompositeTextExtractor
 
         throw new NotSupportedException(
             $"Format non supporté : '{extension}'. " +
-            "Vérifiez que le fichier correspond à un format pris en charge (PDF, HTML, vidéo/audio).");
+            "Formats pris en charge : PDF, HTML, DOCX, XLSX, CSV, PPTX, TXT, Markdown, JSON, vidéo/audio.");
     }
 }
