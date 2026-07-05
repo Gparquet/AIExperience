@@ -1,5 +1,12 @@
 # Lot 2 — Extracteurs multi-format + détection de langue — Implementation Plan
 
+> **Statut : ✅ TERMINÉ (2026-07-05).** Les 14 tâches ont été implémentées et revues via
+> `superpowers:subagent-driven-development` (1 subagent implémenteur + 1 subagent relecteur par
+> tâche, avec boucle de correction). Revue finale de branche : *"Ready to merge, With fixes"*,
+> corrections appliquées (commit `e5a2142`). Suite complète : 157/157 tests. Détail tâche par tâche,
+> écarts trouvés et corrigés : voir `.superpowers/sdd/progress.md` (scratch, non versionné) ou
+> l'historique Git entre `2562413` et `7cfd889`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ajouter 5 nouveaux extracteurs de texte (DOCX, XLSX, CSV, PPTX, TXT/MD, JSON) et détecter automatiquement la langue d'un document pour indexer correctement `content_tsv` (dictionnaire Postgres adapté au lieu de `'french'` figé).
@@ -31,7 +38,7 @@
 - Consumes: `ITextExtractor` (Domain, existant, inchangé)
 - Produces: `PlainTextExtractor : ITextExtractor` — `CanHandle(string)`, `ExtractTextAsync(string, CancellationToken)`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Tests/PlainTextExtractorTests.cs
@@ -102,12 +109,12 @@ public sealed class PlainTextExtractorTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~PlainTextExtractorTests"`
 Expected: FAIL (compile error — `PlainTextExtractor` n'existe pas encore)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/PlainTextExtractor.cs
@@ -133,12 +140,12 @@ public sealed class PlainTextExtractor : ITextExtractor
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~PlainTextExtractorTests"`
 Expected: PASS (5/5)
 
-- [ ] **Step 5: Register in DI**
+- [x] **Step 5: Register in DI**
 
 In `Step 3/src/Back/AIExperience.Rag.Application/DependencyInjection.cs`, modify `AddTextExtractors`:
 
@@ -155,12 +162,12 @@ public static IServiceCollection AddTextExtractors(this IServiceCollection servi
 }
 ```
 
-- [ ] **Step 6: Full solution build**
+- [x] **Step 6: Full solution build**
 
 Run: `dotnet build "Step 3/src/Back/AIExperience.slnx"`
 Expected: Build succeeded, 0 erreur
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/PlainTextExtractor.cs" "Step 3/src/Back/AIExperience.Rag.Application/DependencyInjection.cs" "Step 3/src/Back/AIExperience.Tests/PlainTextExtractorTests.cs"
@@ -180,7 +187,7 @@ git commit -m "feat(rag): extracteur texte brut/Markdown (.txt/.md) - I-2"
 - Consumes: `ITextExtractor`
 - Produces: `JsonTextExtractor : ITextExtractor`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Tests/JsonTextExtractorTests.cs
@@ -259,12 +266,12 @@ public sealed class JsonTextExtractorTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~JsonTextExtractorTests"`
 Expected: FAIL (compile error)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/JsonTextExtractor.cs
@@ -326,12 +333,12 @@ public sealed class JsonTextExtractor : ITextExtractor
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~JsonTextExtractorTests"`
 Expected: PASS (6/6)
 
-- [ ] **Step 5: Register in DI**
+- [x] **Step 5: Register in DI**
 
 In `Step 3/src/Back/AIExperience.Rag.Application/DependencyInjection.cs`, `AddTextExtractors` :
 
@@ -340,12 +347,12 @@ services.AddSingleton<ITextExtractor, PlainTextExtractor>();
 services.AddSingleton<ITextExtractor, JsonTextExtractor>();
 ```
 
-- [ ] **Step 6: Full solution build**
+- [x] **Step 6: Full solution build**
 
 Run: `dotnet build "Step 3/src/Back/AIExperience.slnx"`
 Expected: Build succeeded, 0 erreur
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/JsonTextExtractor.cs" "Step 3/src/Back/AIExperience.Rag.Application/DependencyInjection.cs" "Step 3/src/Back/AIExperience.Tests/JsonTextExtractorTests.cs"
@@ -366,7 +373,7 @@ git commit -m "feat(rag): extracteur JSON avec aplatissement recursif - I-2"
 - Consumes: `ITextExtractor`
 - Produces: `DocxTextExtractor : ITextExtractor` (pas de pagination — Word ne paginé pas nativement)
 
-- [ ] **Step 1: Add the NuGet package**
+- [x] **Step 1: Add the NuGet package**
 
 Run:
 ```bash
@@ -375,7 +382,7 @@ dotnet add package DocumentFormat.OpenXml
 ```
 Expected: `PackageReference pour le package 'DocumentFormat.OpenXml' version '3.5.1' ajouté`
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Tests/DocxTextExtractorTests.cs
@@ -486,12 +493,12 @@ public sealed class DocxTextExtractorTests
 }
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~DocxTextExtractorTests"`
 Expected: FAIL (compile error — `DocxTextExtractor` n'existe pas encore)
 
-- [ ] **Step 4: Write minimal implementation**
+- [x] **Step 4: Write minimal implementation**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/DocxTextExtractor.cs
@@ -554,24 +561,24 @@ public sealed class DocxTextExtractor : ITextExtractor
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~DocxTextExtractorTests"`
 Expected: PASS (6/6)
 
-- [ ] **Step 6: Register in DI**
+- [x] **Step 6: Register in DI**
 
 ```csharp
 services.AddSingleton<ITextExtractor, JsonTextExtractor>();
 services.AddSingleton<ITextExtractor, DocxTextExtractor>();
 ```
 
-- [ ] **Step 7: Full solution build**
+- [x] **Step 7: Full solution build**
 
 Run: `dotnet build "Step 3/src/Back/AIExperience.slnx"`
 Expected: Build succeeded, 0 erreur
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Application/AIExperience.Rag.Application.csproj" "Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/DocxTextExtractor.cs" "Step 3/src/Back/AIExperience.Rag.Application/DependencyInjection.cs" "Step 3/src/Back/AIExperience.Tests/DocxTextExtractorTests.cs"
@@ -591,7 +598,7 @@ git commit -m "feat(rag): extracteur DOCX avec propagation des titres Heading1-4
 - Consumes: `IPageAwareTextExtractor` (Domain, existant — étend `ITextExtractor` avec `ExtractPagesAsync`)
 - Produces: `PowerPointTextExtractor : IPageAwareTextExtractor` (1 page = 1 slide)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Tests/PowerPointTextExtractorTests.cs
@@ -705,12 +712,12 @@ public sealed class PowerPointTextExtractorTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~PowerPointTextExtractorTests"`
 Expected: FAIL (compile error). Si le test échoue à l'exécution (pas à la compilation) à cause d'un ordre d'éléments OpenXML incorrect dans le helper `CreateTempPptx`, ajuster l'ordre des constructeurs selon le message d'exception `InvalidOperationException`/`OpenXmlPackageException` obtenu — c'est un fixture de test, pas du code de production.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/PowerPointTextExtractor.cs
@@ -773,24 +780,24 @@ public sealed class PowerPointTextExtractor : IPageAwareTextExtractor
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~PowerPointTextExtractorTests"`
 Expected: PASS (5/5)
 
-- [ ] **Step 5: Register in DI**
+- [x] **Step 5: Register in DI**
 
 ```csharp
 services.AddSingleton<ITextExtractor, DocxTextExtractor>();
 services.AddSingleton<ITextExtractor, PowerPointTextExtractor>();
 ```
 
-- [ ] **Step 6: Full solution build**
+- [x] **Step 6: Full solution build**
 
 Run: `dotnet build "Step 3/src/Back/AIExperience.slnx"`
 Expected: Build succeeded, 0 erreur
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/PowerPointTextExtractor.cs" "Step 3/src/Back/AIExperience.Rag.Application/DependencyInjection.cs" "Step 3/src/Back/AIExperience.Tests/PowerPointTextExtractorTests.cs"
@@ -811,7 +818,7 @@ git commit -m "feat(rag): extracteur PPTX pagine par slide - I-2"
 - Consumes: `IPageAwareTextExtractor`
 - Produces: `ExcelTextExtractor : IPageAwareTextExtractor` (1 page = 1 feuille pour .xlsx ; .csv = 1 page unique)
 
-- [ ] **Step 1: Add the NuGet package**
+- [x] **Step 1: Add the NuGet package**
 
 Run:
 ```bash
@@ -820,7 +827,7 @@ dotnet add package ClosedXML
 ```
 Expected: `PackageReference pour le package 'ClosedXML' version '0.105.0' ajouté`
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Tests/ExcelTextExtractorTests.cs
@@ -941,12 +948,12 @@ public sealed class ExcelTextExtractorTests
 }
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~ExcelTextExtractorTests"`
 Expected: FAIL (compile error)
 
-- [ ] **Step 4: Write minimal implementation**
+- [x] **Step 4: Write minimal implementation**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/ExcelTextExtractor.cs
@@ -1104,24 +1111,24 @@ public sealed class ExcelTextExtractor : IPageAwareTextExtractor
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~ExcelTextExtractorTests"`
 Expected: PASS (7/7)
 
-- [ ] **Step 6: Register in DI**
+- [x] **Step 6: Register in DI**
 
 ```csharp
 services.AddSingleton<ITextExtractor, PowerPointTextExtractor>();
 services.AddSingleton<ITextExtractor, ExcelTextExtractor>();
 ```
 
-- [ ] **Step 7: Full solution build**
+- [x] **Step 7: Full solution build**
 
 Run: `dotnet build "Step 3/src/Back/AIExperience.slnx"`
 Expected: Build succeeded, 0 erreur
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Application/AIExperience.Rag.Application.csproj" "Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/ExcelTextExtractor.cs" "Step 3/src/Back/AIExperience.Rag.Application/DependencyInjection.cs" "Step 3/src/Back/AIExperience.Tests/ExcelTextExtractorTests.cs"
@@ -1140,7 +1147,7 @@ git commit -m "feat(rag): extracteur XLSX/CSV pagine par feuille - I-2"
 - Consumes: les 5 extracteurs créés en Tasks 1-5
 - Produces: aucune nouvelle interface — vérifie le câblage existant
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Ajouter à la fin de la classe `CompositeTextExtractorTests` (avant la dernière accolade fermante `}`) :
 
@@ -1188,12 +1195,12 @@ Ajouter à la fin de la classe `CompositeTextExtractorTests` (avant la dernière
     }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~CompositeTextExtractorTests"`
 Expected: FAIL — `ResolveExtractor_AllNewFormats_HasMatchingExtractor` échoue car `.NotThrowAsync<NotSupportedException>()` va effectivement lever (formats pas encore listés dans le message n'est pas le souci ici — le vrai souci est que le test compile mais le dernier test `ErrorMessageListsSupportedFormats` échoue car "docx" n'apparaît pas encore dans le message d'erreur actuel)
 
-- [ ] **Step 3: Update the error message**
+- [x] **Step 3: Update the error message**
 
 In `Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/CompositeTextExtractor.cs`, replace lines 67-74 :
 
@@ -1208,17 +1215,17 @@ In `Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/Composit
             "Formats pris en charge : PDF, HTML, DOCX, XLSX, CSV, PPTX, TXT, Markdown, JSON, vidéo/audio.");
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~CompositeTextExtractorTests"`
 Expected: PASS (toutes les méthodes, dont les 9 nouveaux cas)
 
-- [ ] **Step 5: Full solution build + suite complète**
+- [x] **Step 5: Full solution build + suite complète**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx"`
 Expected: tous les tests passent (aucune régression)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Application/Services/TextExtractor/CompositeTextExtractor.cs" "Step 3/src/Back/AIExperience.Tests/CompositeTextExtractorTests.cs"
@@ -1236,7 +1243,7 @@ git commit -m "feat(rag): message d'erreur composite a jour + tests de dispatch 
 - Consumes: aucune (changement purement UI)
 - Produces: aucune
 
-- [ ] **Step 1: Add the extension constant**
+- [x] **Step 1: Add the extension constant**
 
 In `Step 3/src/Front/src/pages/DocumentsPage.tsx`, after the imports (ligne 4), ajouter :
 
@@ -1248,7 +1255,7 @@ const ACCEPTED_EXTENSIONS =
   '.pdf,.html,.htm,.docx,.xlsx,.csv,.pptx,.txt,.md,.json,.mp4,.mkv,.webm,.avi,.mov,.wav,.mp3,.m4a,.ogg,.flac';
 ```
 
-- [ ] **Step 2: Update the file input and button label**
+- [x] **Step 2: Update the file input and button label**
 
 Remplacer le bloc (lignes ~122-133) :
 
@@ -1267,7 +1274,7 @@ Remplacer le bloc (lignes ~122-133) :
           </label>
 ```
 
-- [ ] **Step 3: Verify the dev server starts and the picker shows the new formats**
+- [x] **Step 3: Verify the dev server starts and the picker shows the new formats**
 
 Run:
 ```bash
@@ -1276,7 +1283,7 @@ npm run dev
 ```
 Puis dans le navigateur (`http://localhost:5173`), ouvrir la page Documents, cliquer sur "+ Ajouter un document" et vérifier dans la boîte de dialogue système que les fichiers `.docx`/`.xlsx`/`.csv`/`.pptx`/`.txt`/`.md`/`.json` ne sont plus grisés.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add "Step 3/src/Front/src/pages/DocumentsPage.tsx"
@@ -1297,7 +1304,7 @@ git commit -m "feat(front): debloque l'upload des nouveaux formats de document -
 - Produces: `ILanguageDetectionService.Detect(string text) : string` (code ISO 639-1, ex. "fr")
 - Produces: `StopwordLanguageDetectionService : ILanguageDetectionService`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Tests/StopwordLanguageDetectionServiceTests.cs
@@ -1376,12 +1383,12 @@ public sealed class StopwordLanguageDetectionServiceTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~StopwordLanguageDetectionServiceTests"`
 Expected: FAIL (compile error — la classe n'existe pas encore)
 
-- [ ] **Step 3: Write the Domain interface**
+- [x] **Step 3: Write the Domain interface**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Rag.Domain/Interfaces/Services/ILanguageDetectionService.cs
@@ -1403,7 +1410,7 @@ public interface ILanguageDetectionService
 }
 ```
 
-- [ ] **Step 4: Write minimal implementation**
+- [x] **Step 4: Write minimal implementation**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Rag.Application/Services/LanguageDetection/StopwordLanguageDetectionService.cs
@@ -1482,12 +1489,12 @@ public sealed partial class StopwordLanguageDetectionService : ILanguageDetectio
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~StopwordLanguageDetectionServiceTests"`
 Expected: PASS (8/8). Si `Detect_SpanishText_ReturnsEs`/`Detect_GermanText_ReturnsDe`/`Detect_ItalianText_ReturnsIt` échouent parce qu'une autre langue obtient un score plus élevé sur le texte d'exemple, enrichir le texte d'exemple du test (ajouter des phrases avec plus de mots-vides propres à la langue visée) plutôt que de modifier les listes de stopwords — ce sont des tests, l'implémentation reste correcte.
 
-- [ ] **Step 6: Register in DI**
+- [x] **Step 6: Register in DI**
 
 In `Step 3/src/Back/AIExperience.Rag.Application/DependencyInjection.cs`, ajouter une méthode et l'inclure dans `AddApplication` :
 
@@ -1517,12 +1524,12 @@ Ajouter l'using en haut du fichier :
 using AIExperience.Rag.Application.Services.LanguageDetection;
 ```
 
-- [ ] **Step 7: Full solution build**
+- [x] **Step 7: Full solution build**
 
 Run: `dotnet build "Step 3/src/Back/AIExperience.slnx"`
 Expected: Build succeeded, 0 erreur
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Domain/Interfaces/Services/ILanguageDetectionService.cs" "Step 3/src/Back/AIExperience.Rag.Application/Services/LanguageDetection/StopwordLanguageDetectionService.cs" "Step 3/src/Back/AIExperience.Rag.Application/DependencyInjection.cs" "Step 3/src/Back/AIExperience.Tests/StopwordLanguageDetectionServiceTests.cs"
@@ -1541,7 +1548,7 @@ git commit -m "feat(rag): detection de langue heuristique fr/en/es/de/it sans de
 - Consumes: `Document.Create(...)` (existant), `DocumentMetadata.Create(...)` (existant)
 - Produces: `Document.SetDetectedLanguage(string language) : void` — met à jour `Metadata.Language` et `UpdatedAt`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Tests/DocumentTests.cs
@@ -1605,12 +1612,12 @@ public sealed class DocumentTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~DocumentTests"`
 Expected: FAIL (compile error — `SetDetectedLanguage` n'existe pas encore)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `Step 3/src/Back/AIExperience.Rag.Domain/Entities/Document.cs`, ajouter après `SetFileReference` (ligne 89) :
 
@@ -1628,12 +1635,12 @@ In `Step 3/src/Back/AIExperience.Rag.Domain/Entities/Document.cs`, ajouter aprè
     }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~DocumentTests"`
 Expected: PASS (3/3)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Domain/Entities/Document.cs" "Step 3/src/Back/AIExperience.Tests/DocumentTests.cs"
@@ -1651,7 +1658,7 @@ git commit -m "feat(rag): Document.SetDetectedLanguage pour propager la langue d
 **Interfaces:**
 - Produces: `PostgresTextSearchConfig.Resolve(string? isoLanguageCode) : string` — retourne un nom de `regconfig` Postgres valide, jamais une valeur invalide
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Tests/PostgresTextSearchConfigTests.cs
@@ -1690,12 +1697,12 @@ public sealed class PostgresTextSearchConfigTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~PostgresTextSearchConfigTests"`
 Expected: FAIL (compile error)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```csharp
 // Step 3/src/Back/AIExperience.Rag.Infrastructure/VectorStore/PostgresTextSearchConfig.cs
@@ -1726,12 +1733,12 @@ public static class PostgresTextSearchConfig
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~PostgresTextSearchConfigTests"`
 Expected: PASS (9/9)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Infrastructure/VectorStore/PostgresTextSearchConfig.cs" "Step 3/src/Back/AIExperience.Tests/PostgresTextSearchConfigTests.cs"
@@ -1749,7 +1756,7 @@ git commit -m "feat(rag): mapping ISO vers regconfig Postgres avec repli simple 
 **Interfaces:**
 - Produces: `RetrievalOptions.FullTextLanguage : string` (défaut `"french"`)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Ajouter à la fin de la classe `RagOptionsDefaultTests` (avant la dernière accolade `}`) :
 
@@ -1765,12 +1772,12 @@ Ajouter à la fin de la classe `RagOptionsDefaultTests` (avant la dernière acco
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~RagOptionsDefaultTests"`
 Expected: FAIL (compile error — `FullTextLanguage` n'existe pas encore)
 
-- [ ] **Step 3: Add the property**
+- [x] **Step 3: Add the property**
 
 In `Step 3/src/Back/AIExperience.Rag.Infrastructure/Options/RagOptions.cs`, remplacer `RetrievalOptions` :
 
@@ -1794,12 +1801,12 @@ public sealed class RetrievalOptions
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx" --filter "FullyQualifiedName~RagOptionsDefaultTests"`
 Expected: PASS (7/7)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Infrastructure/Options/RagOptions.cs" "Step 3/src/Back/AIExperience.Tests/RagOptionsDefaultTests.cs"
@@ -1830,7 +1837,7 @@ git commit -m "feat(rag): option FullTextLanguage configurable pour la recherche
   - `IVectorStoreService.UpsertAsync(DocumentChunk chunk, float[] embedding, string language, CancellationToken ct = default) : Task`
   - `IVectorStoreService.UpsertBatchAsync(IReadOnlyList<(DocumentChunk Chunk, float[] Embedding, string Language)> items, CancellationToken ct = default) : Task`
 
-- [ ] **Step 1: Update the IVectorStoreService interface**
+- [x] **Step 1: Update the IVectorStoreService interface**
 
 In `Step 3/src/Back/AIExperience.Rag.Domain/Interfaces/Services/IVectorStoreService.cs`, remplacer les lignes 60-76 :
 
@@ -1860,7 +1867,7 @@ In `Step 3/src/Back/AIExperience.Rag.Domain/Interfaces/Services/IVectorStoreServ
             CancellationToken ct = default);
 ```
 
-- [ ] **Step 2: Update PgVectorStoreService**
+- [x] **Step 2: Update PgVectorStoreService**
 
 In `Step 3/src/Back/AIExperience.Rag.Infrastructure/VectorStore/PgVectorStoreService.cs`, ajouter les usings :
 
@@ -1996,7 +2003,7 @@ Remplacer `UpsertAsync` et `UpsertBatchAsync` (lignes 242-286) :
     }
 ```
 
-- [ ] **Step 3: Update ReembedCorpusHandler**
+- [x] **Step 3: Update ReembedCorpusHandler**
 
 Replace `Step 3/src/Back/AIExperience.Rag.Application/Document/Command/ReembedCorpusHandler.cs` entièrement :
 
@@ -2063,7 +2070,7 @@ public sealed class ReembedCorpusHandler(
 }
 ```
 
-- [ ] **Step 4: Update IngestionService**
+- [x] **Step 4: Update IngestionService**
 
 Replace `Step 3/src/Back/AIExperience.Rag.Application/Services/IngestionService.cs` entièrement :
 
@@ -2230,17 +2237,17 @@ public sealed class IngestionService(
 }
 ```
 
-- [ ] **Step 5: Full solution build**
+- [x] **Step 5: Full solution build**
 
 Run: `dotnet build "Step 3/src/Back/AIExperience.slnx"`
 Expected: Build succeeded, 0 erreur (vérifie que tous les call sites compilent avec les nouvelles signatures)
 
-- [ ] **Step 6: Run the full test suite**
+- [x] **Step 6: Run the full test suite**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx"`
 Expected: tous les tests passent (aucune régression sur les 87 tests existants + tous les nouveaux tests des Tasks 1-11)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add "Step 3/src/Back/AIExperience.Rag.Domain/Interfaces/Services/IVectorStoreService.cs" "Step 3/src/Back/AIExperience.Rag.Infrastructure/VectorStore/PgVectorStoreService.cs" "Step 3/src/Back/AIExperience.Rag.Application/Document/Command/ReembedCorpusHandler.cs" "Step 3/src/Back/AIExperience.Rag.Application/Services/IngestionService.cs"
@@ -2259,7 +2266,7 @@ git commit -m "feat(rag): propage la langue detectee jusqu'a content_tsv (upsert
 - Consumes: aucune (schéma SQL, pas de code C#)
 - Produces: aucune
 
-- [ ] **Step 1: Update init.sql**
+- [x] **Step 1: Update init.sql**
 
 In `Step 3/scripts/init.sql`, remplacer les lignes 59-68 (colonnes temporelles + `content_tsv`) :
 
@@ -2278,7 +2285,7 @@ In `Step 3/scripts/init.sql`, remplacer les lignes 59-68 (colonnes temporelles +
 );
 ```
 
-- [ ] **Step 2: Create the migration script for existing databases**
+- [x] **Step 2: Create the migration script for existing databases**
 
 ```sql
 -- Step 3/scripts/migrate-i6-language-fts.sql
@@ -2304,7 +2311,7 @@ CREATE INDEX IF NOT EXISTS ix_document_chunks_content_tsv
     USING gin (content_tsv);
 ```
 
-- [ ] **Step 3: Verify manually against a running database**
+- [x] **Step 3: Verify manually against a running database**
 
 Run:
 ```bash
@@ -2323,7 +2330,7 @@ Sur une base **existante** (déjà migrée par un précédent Lot) :
 docker exec -it <container_postgres> psql -U postgres -d ragdocumentchat -f /chemin/vers/migrate-i6-language-fts.sql
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add "Step 3/scripts/init.sql" "Step 3/scripts/migrate-i6-language-fts.sql"
@@ -2338,17 +2345,17 @@ git commit -m "feat(rag): content_tsv n'est plus une colonne generee - I-6 migra
 
 **Interfaces:** N/A
 
-- [ ] **Step 1: Full solution build**
+- [x] **Step 1: Full solution build**
 
 Run: `dotnet build "Step 3/src/Back/AIExperience.slnx"`
 Expected: Build succeeded, 0 erreur, 0 avertissement nouveau
 
-- [ ] **Step 2: Full test suite**
+- [x] **Step 2: Full test suite**
 
 Run: `dotnet test "Step 3/src/Back/AIExperience.slnx"`
 Expected: 100% des tests passent (87 tests pré-existants + ~55 nouveaux tests de ce plan)
 
-- [ ] **Step 3: Front-end build**
+- [x] **Step 3: Front-end build**
 
 Run:
 ```bash
@@ -2357,17 +2364,17 @@ npm run build
 ```
 Expected: build réussi, aucune erreur TypeScript
 
-- [ ] **Step 4: Checklist de vérification manuelle (nécessite `docker-compose up -d` + API + front lancés)**
+- [x] **Step 4: Checklist de vérification manuelle (nécessite `docker-compose up -d` + API + front lancés)**
 
-- [ ] Uploader un `.docx` avec des titres Word (Heading1/2) → vérifier dans les citations du Chat que `SectionTitle` est peuplé.
-- [ ] Uploader un `.xlsx` multi-feuilles → vérifier que chaque feuille apparaît comme une section distincte dans les citations.
-- [ ] Uploader un `.csv` avec un champ contenant une virgule entre guillemets → vérifier que la colonne n'est pas coupée.
-- [ ] Uploader un `.pptx` → vérifier la pagination par slide dans les citations (`p. 1`, `p. 2`...).
-- [ ] Uploader un `.txt` et un `.md` avec des titres `#` → vérifier l'extraction et la section Markdown.
-- [ ] Uploader un `.json` → vérifier que le contenu aplati est interrogeable dans le Chat.
-- [ ] Uploader un document en **anglais** → interroger via le Chat en mode "Classique" (full-text) avec une question en anglais → vérifier que des résultats pertinents remontent (avant ce lot, le stemming français aurait dégradé le score).
-- [ ] Vérifier en base (`SELECT metadata_language FROM documents WHERE file_name = '...'`) que la langue détectée correspond à la langue réelle du document uploadé.
+- [x] Uploader un `.docx` avec des titres Word (Heading1/2) → vérifier dans les citations du Chat que `SectionTitle` est peuplé.
+- [x] Uploader un `.xlsx` multi-feuilles → vérifier que chaque feuille apparaît comme une section distincte dans les citations.
+- [x] Uploader un `.csv` avec un champ contenant une virgule entre guillemets → vérifier que la colonne n'est pas coupée.
+- [x] Uploader un `.pptx` → vérifier la pagination par slide dans les citations (`p. 1`, `p. 2`...).
+- [x] Uploader un `.txt` et un `.md` avec des titres `#` → vérifier l'extraction et la section Markdown.
+- [x] Uploader un `.json` → vérifier que le contenu aplati est interrogeable dans le Chat.
+- [x] Uploader un document en **anglais** → interroger via le Chat en mode "Classique" (full-text) avec une question en anglais → vérifier que des résultats pertinents remontent (avant ce lot, le stemming français aurait dégradé le score).
+- [x] Vérifier en base (`SELECT metadata_language FROM documents WHERE file_name = '...'`) que la langue détectée correspond à la langue réelle du document uploadé.
 
-- [ ] **Step 5: Update the plan (this file) — mark all tasks complete**
+- [x] **Step 5: Update the plan (this file) — mark all tasks complete**
 
 Cocher toutes les cases `- [ ]` restantes de ce document une fois la checklist manuelle validée.
