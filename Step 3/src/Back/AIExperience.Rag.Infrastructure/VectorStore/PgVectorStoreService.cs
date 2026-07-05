@@ -100,6 +100,16 @@ public sealed class PgVectorStoreService : IVectorStoreService
         return results;
     }
 
+    // LIMITATION CONNUE (asymétrie langue index/requête, s'applique à SearchFullTextAsync ET
+    // SearchLexicalAsync ci-dessous) : depuis le Lot 2, UpsertAsync indexe content_tsv avec la langue
+    // détectée PROPRE à chaque document (ex. "english" pour un document anglais), tandis que les deux
+    // méthodes ci-dessous analysent toujours la question avec l'unique langue configurée
+    // (RagOptions.Retrieval.FullTextLanguage, "french" par défaut). La recherche full-text Postgres
+    // compare des lexèmes déjà racinisés : un contenu indexé en "english" ne matchera pas une requête
+    // racinisée en "french" (et inversement). Résultat : sur un corpus multi-langues, un document dans
+    // une langue différente de FullTextLanguage aura un score full-text/lexical dégradé, voire nul.
+    // C'est un compromis assumé pour cette itération, pas un bug corrigé ici — un vrai support
+    // multi-langue nécessiterait un fan-out de la requête sur chaque langue du corpus (hors périmètre).
     /// <inheritdoc/>
     public async Task<IReadOnlyList<(DocumentChunk Chunk, double Score)>> SearchFullTextAsync(
         string query,

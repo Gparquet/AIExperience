@@ -58,6 +58,17 @@ public sealed class RetrievalOptions
     /// et SearchLexicalAsync pour analyser la question (ex. "french", "english"). Reste globale
     /// et configurable plutôt que détectée par question : peu fiable sur un texte court.
     /// (Constat I-6 du plan Lot 2)
+    ///
+    /// LIMITATION CONNUE (asymétrie langue index/requête) : depuis le Lot 2, chaque document est
+    /// indexé dans <c>content_tsv</c> avec SA PROPRE langue détectée (ex. "english" pour un document
+    /// anglais), alors que la requête est toujours analysée avec cette unique langue configurée ici.
+    /// Postgres full-text search compare des lexèmes déjà racinisés ("stemmed") : un document indexé
+    /// en "english" ne matchera pas une requête racinisée en "french" (et vice versa). Pour un corpus
+    /// multi-langues, les documents indexés dans une langue différente de <see cref="FullTextLanguage"/>
+    /// auront donc une qualité de correspondance full-text/lexicale dégradée, voire nulle. Ceci est un
+    /// compromis assumé pour cette itération, pas un bug — le support complet par langue nécessiterait
+    /// un fan-out de la requête sur chaque langue présente dans le corpus (RRF entre langues), ce qui
+    /// est hors périmètre ici.
     /// </summary>
     public string FullTextLanguage { get; set; } = "french";
 }

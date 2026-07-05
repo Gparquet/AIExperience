@@ -4,11 +4,22 @@ namespace AIExperience.Rag.Application.Document.Command;
 
 public sealed class UploadDocumentValidator : AbstractValidator<UploadDocumentCommand>
 {
+    // ".doc" et ".xls" (formats binaires legacy Office) ont été retirés : aucun extracteur ne les
+    // supporte (DocxTextExtractor ne gère que .docx, ExcelTextExtractor ne gère que .xlsx/.csv), donc
+    // un upload avec ces extensions passait la validation puis échouait à l'extraction
+    // (NotSupportedException), marquant le document Failed — un chemin bout-en-bout cassé pour un
+    // format faussement annoncé comme supporté (revue finale, constat Important n°1).
     private static readonly string[] AllowedExtensions =
-        [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".txt", ".csv", ".pptx", ".md", ".json", ".html", ".htm",
+        [".pdf", ".docx", ".xlsx", ".txt", ".csv", ".pptx", ".md", ".json", ".html", ".htm",
          ".mp4", ".mkv", ".webm", ".avi", ".mov",          // vidéo
          ".wav", ".mp3", ".m4a", ".ogg", ".flac"];          // audio
 
+    // "application/octet-stream" est ajouté car de nombreux navigateurs n'ont pas de type MIME
+    // enregistré pour certaines extensions (notamment ".md") et retombent sur ce type générique de
+    // "binaire inconnu" plutôt que sur "text/markdown"/"text/x-markdown" — sans cette entrée, un
+    // upload ".md" pourtant listé comme supporté pouvait échouer au contrôle de content-type en
+    // conditions réelles (revue finale, constat Important n°3). La whitelist d'extensions reste le
+    // véritable filtre : ajouter ce type générique n'ouvre pas de contournement de cette whitelist.
     private static readonly string[] AllowedContentTypes =
     [
         "application/pdf",
@@ -25,7 +36,10 @@ public sealed class UploadDocumentValidator : AbstractValidator<UploadDocumentCo
         // Vidéo
         "video/mp4", "video/x-matroska", "video/webm", "video/avi", "video/quicktime",
         // Audio
-        "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/flac"
+        "audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/flac",
+        // Type MIME générique de repli envoyé par certains navigateurs pour des extensions sans
+        // association MIME OS (voir commentaire ci-dessus, ex. ".md").
+        "application/octet-stream"
     ];
 
     private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 Mo
