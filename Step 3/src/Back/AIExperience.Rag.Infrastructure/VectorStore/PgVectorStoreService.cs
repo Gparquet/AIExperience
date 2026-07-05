@@ -1,7 +1,9 @@
 using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Interfaces.Services;
+using AIExperience.Rag.Infrastructure.Options;
 using AIExperience.Rag.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace AIExperience.Rag.Infrastructure.VectorStore;
@@ -13,10 +15,12 @@ namespace AIExperience.Rag.Infrastructure.VectorStore;
 public sealed class PgVectorStoreService : IVectorStoreService
 {
     private readonly AppDbContext context;
+    private readonly string fullTextLanguage;
 
-    public PgVectorStoreService(AppDbContext context)
+    public PgVectorStoreService(AppDbContext context, IOptions<RagOptions> ragOptions)
     {
         this.context = context;
+        this.fullTextLanguage = ragOptions.Value.Retrieval.FullTextLanguage;
     }
 
     /// <inheritdoc/>
@@ -107,19 +111,18 @@ public sealed class PgVectorStoreService : IVectorStoreService
             ? "AND dc.document_id = ANY(@docIds)"
             : string.Empty;
 
-        // La requête cible la colonne générée content_tsv (indexée via GIN) pour de meilleures performances.
-        // ts_rank(content_tsv, …) exploite le tsvector pré-calculé → O(log N) au lieu de scan séquentiel.
-        // plainto_tsquery convertit la phrase en opérateurs AND implicites — plus robuste que to_tsquery.
-        // JOIN documents pour récupérer le nom du fichier source sans requête N+1.
+        // La requête cible la colonne content_tsv (indexée via GIN) pour de meilleures performances.
+        // La langue de la question est configurable (RagOptions.Retrieval.FullTextLanguage) plutôt que
+        // détectée : peu fiable sur un texte court (constat I-6 du plan Lot 2).
         var sql = $"""
             SELECT dc.id, dc.document_id, dc.content, dc.chunk_index, dc.page_number,
                    dc.section_title, dc.embedding_dimensions, dc.created_at,
-                   ts_rank(dc.content_tsv, plainto_tsquery('french', @query))::float8 AS score,
+                   ts_rank(dc.content_tsv, plainto_tsquery(@queryLanguage::regconfig, @query))::float8 AS score,
                    d.file_name,
                    dc.start_time_seconds, dc.end_time_seconds
             FROM document_chunks dc
             JOIN documents d ON d.id = dc.document_id
-            WHERE dc.content_tsv @@ plainto_tsquery('french', @query)
+            WHERE dc.content_tsv @@ plainto_tsquery(@queryLanguage::regconfig, @query)
             {documentFilter}
             ORDER BY score DESC
             LIMIT @topK
@@ -127,6 +130,7 @@ public sealed class PgVectorStoreService : IVectorStoreService
 
         var parameters = new List<object>
         {
+            new NpgsqlParameter("queryLanguage", fullTextLanguage),
             new NpgsqlParameter("query", query),
             new NpgsqlParameter("topK", topK)
         };
@@ -184,7 +188,8 @@ public sealed class PgVectorStoreService : IVectorStoreService
         // que plainto_tsquery, mais les mots sont combinés en OR plutôt qu'en AND.
         var sql = $"""
             WITH q AS (
-                SELECT to_tsquery('french', replace(plainto_tsquery('french', @query)::text, ' & ', ' | ')) AS tsq
+                SELECT to_tsquery(@queryLanguage::regconfig,
+                    replace(plainto_tsquery(@queryLanguage::regconfig, @query)::text, ' & ', ' | ')) AS tsq
             )
             SELECT dc.id, dc.document_id, dc.content, dc.chunk_index, dc.page_number,
                    dc.section_title, dc.embedding_dimensions, dc.created_at,
@@ -201,6 +206,7 @@ public sealed class PgVectorStoreService : IVectorStoreService
 
         var parameters = new List<object>
         {
+            new NpgsqlParameter("queryLanguage", fullTextLanguage),
             new NpgsqlParameter("query", query),
             new NpgsqlParameter("topK", topK)
         };
@@ -239,20 +245,27 @@ public sealed class PgVectorStoreService : IVectorStoreService
     }
 
     /// <inheritdoc/>
-    public async Task UpsertAsync(DocumentChunk chunk, float[] embedding, CancellationToken ct = default)
+    public async Task UpsertAsync(DocumentChunk chunk, float[] embedding, string language, CancellationToken ct = default)
     {
+        // Résout le regconfig Postgres correspondant à la langue du document (repli "simple" si inconnue).
+        var regconfig = PostgresTextSearchConfig.Resolve(language);
+
+        // content_tsv n'est plus une colonne générée : elle est calculée explicitement ici avec le
+        // regconfig propre à la langue du document (constat I-6 du plan Lot 2).
         var sql = """
             INSERT INTO document_chunks
                 ("id", document_id, content, chunk_index, page_number, section_title,
-                 embedding_dimensions, embedding, created_at, start_time_seconds, end_time_seconds)
+                 embedding_dimensions, embedding, created_at, start_time_seconds, end_time_seconds, content_tsv)
             VALUES
                 (@id, @documentId, @content, @chunkIndex, @pageNumber, @sectionTitle,
-                 @embDims, @embedding::vector, NOW(), @startTimeSecs, @endTimeSecs)
+                 @embDims, @embedding::vector, NOW(), @startTimeSecs, @endTimeSecs,
+                 to_tsvector(@regconfig::regconfig, @content))
             ON CONFLICT ("id") DO UPDATE SET
                 content = EXCLUDED.content,
                 embedding = EXCLUDED.embedding,
                 start_time_seconds = EXCLUDED.start_time_seconds,
-                end_time_seconds = EXCLUDED.end_time_seconds;
+                end_time_seconds = EXCLUDED.end_time_seconds,
+                content_tsv = EXCLUDED.content_tsv;
             """;
 
         await context.Database.ExecuteSqlRawAsync(sql,
@@ -265,12 +278,13 @@ public sealed class PgVectorStoreService : IVectorStoreService
             new NpgsqlParameter("embDims", chunk.EmbeddingDimensions),
             new NpgsqlParameter("embedding", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Real) { Value = embedding },
             new NpgsqlParameter("startTimeSecs", (object?)(chunk.StartTime?.TotalSeconds) ?? DBNull.Value),
-            new NpgsqlParameter("endTimeSecs", (object?)(chunk.EndTime?.TotalSeconds) ?? DBNull.Value));
+            new NpgsqlParameter("endTimeSecs", (object?)(chunk.EndTime?.TotalSeconds) ?? DBNull.Value),
+            new NpgsqlParameter("regconfig", regconfig));
     }
 
     /// <inheritdoc/>
     public async Task UpsertBatchAsync(
-        IReadOnlyList<(DocumentChunk Chunk, float[] Embedding)> items,
+        IReadOnlyList<(DocumentChunk Chunk, float[] Embedding, string Language)> items,
         CancellationToken ct = default)
     {
         if (items.Count == 0) return;
@@ -279,8 +293,8 @@ public sealed class PgVectorStoreService : IVectorStoreService
         // Réduit les aller-retours réseau de N à 1 comparé à N appels UpsertAsync séquentiels.
         await using var transaction = await context.Database.BeginTransactionAsync(ct);
 
-        foreach (var (chunk, embedding) in items)
-            await UpsertAsync(chunk, embedding, ct);
+        foreach (var (chunk, embedding, language) in items)
+            await UpsertAsync(chunk, embedding, language, ct);
 
         await transaction.CommitAsync(ct);
     }

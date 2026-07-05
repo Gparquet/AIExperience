@@ -62,17 +62,23 @@ namespace AIExperience.Rag.Domain.Interfaces.Services
         /// </summary>
         /// <param name="chunk">Chunk à indexer.</param>
         /// <param name="embedding">Vecteur d'embedding associé.</param>
+        /// <param name="language">
+        /// Code ISO 639-1 de la langue du document (ex. "fr") — détermine le dictionnaire Postgres
+        /// utilisé pour indexer content_tsv (constat I-6 du plan Lot 2).
+        /// </param>
         /// <param name="ct">Jeton d'annulation.</param>
-        Task UpsertAsync(DocumentChunk chunk, float[] embedding, CancellationToken ct = default);
+        Task UpsertAsync(DocumentChunk chunk, float[] embedding, string language, CancellationToken ct = default);
 
         /// <summary>
         /// Persiste plusieurs chunks et leurs embeddings en une seule transaction PostgreSQL.
         /// Équivalent à N appels <see cref="UpsertAsync"/> mais avec un seul commit — ~5-10× plus rapide.
+        /// La langue est portée par item (pas globale au batch) car un même appel peut mélanger
+        /// des chunks de documents différents (ex. ré-ingestion corpus complet).
         /// </summary>
-        /// <param name="items">Liste de tuples (chunk, embedding) à insérer.</param>
+        /// <param name="items">Liste de tuples (chunk, embedding, langue ISO) à insérer.</param>
         /// <param name="ct">Jeton d'annulation.</param>
         Task UpsertBatchAsync(
-            IReadOnlyList<(DocumentChunk Chunk, float[] Embedding)> items,
+            IReadOnlyList<(DocumentChunk Chunk, float[] Embedding, string Language)> items,
             CancellationToken ct = default);
 
         /// <summary>

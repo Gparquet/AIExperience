@@ -17,7 +17,8 @@ public sealed class IngestionService(
     IDocumentRepository documentRepository,
     IVectorStoreService vectorStoreService,
     ITemporalChunker temporalChunker,
-    ITextChunker textChunker) : IIngestionService
+    ITextChunker textChunker,
+    ILanguageDetectionService languageDetectionService) : IIngestionService
 {
     /// <inheritdoc/>
     public async Task IngestAsync(
@@ -40,6 +41,18 @@ public sealed class IngestionService(
                 $"Aucun chunk produit pour le document {documentId}. " +
                 "L'extraction de texte a retourné un contenu vide ou non découpable.");
 
+        // 2bis. Détection de la langue du document (I-6) : utilisée pour indexer content_tsv
+        // avec le bon dictionnaire Postgres, et persistée sur le document pour traçabilité.
+        var sampleText = string.Join("\n", pages.Select(p => p.Text));
+        var detectedLanguage = languageDetectionService.Detect(sampleText);
+
+        var document = await documentRepository.GetByIdAsync(documentId, ct);
+        if (document is not null)
+        {
+            document.SetDetectedLanguage(detectedLanguage);
+            await documentRepository.UpdateAsync(document, ct);
+        }
+
         // 3. Embedding + stockage batch dans pgvector (1 transaction pour tous les chunks)
         var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), EmbeddingTaskType.Document, ct);
 
@@ -59,8 +72,8 @@ public sealed class IngestionService(
                 embeddings[i].Length,
                 tc.PageNumber,
                 string.IsNullOrEmpty(tc.SectionTitle) ? string.Empty : CleanString(tc.SectionTitle));
-            return (chunk, embeddings[i]);
-        }).ToList<(DocumentChunk, float[])>();
+            return (chunk, embeddings[i], detectedLanguage);
+        }).ToList<(DocumentChunk, float[], string)>();
 
         await vectorStoreService.UpsertBatchAsync(items, ct);
     }
@@ -99,8 +112,8 @@ public sealed class IngestionService(
                 embeddings[i].Length,
                 tc.PageNumber,
                 string.IsNullOrEmpty(tc.SectionTitle) ? string.Empty : CleanString(tc.SectionTitle));
-            return (chunk, embeddings[i]);
-        }).ToList<(DocumentChunk, float[])>();
+            return (chunk, embeddings[i], metadata.Language);
+        }).ToList<(DocumentChunk, float[], string)>();
 
         await vectorStoreService.UpsertBatchAsync(items, ct);
     }
@@ -130,6 +143,7 @@ public sealed class IngestionService(
                 $"pour {textChunks.Count} chunks (IngestFromSegmentsAsync, document {documentId}).");
 
         // Stockage batch : 1 transaction pour tous les chunks (vs N commits auto-isolés)
+        // Langue déjà connue via Whisper (metadata.Language peuplé par TranscribeVideoHandler).
         var items = textChunks.Select((tc, i) =>
         {
             var chunk = DocumentChunk.Create(
@@ -139,8 +153,8 @@ public sealed class IngestionService(
                 embeddings[i].Length,
                 startTime: tc.StartTime,
                 endTime: tc.EndTime);
-            return (chunk, embeddings[i]);
-        }).ToList<(DocumentChunk, float[])>();
+            return (chunk, embeddings[i], metadata.Language);
+        }).ToList<(DocumentChunk, float[], string)>();
 
         await vectorStoreService.UpsertBatchAsync(items, ct);
     }
