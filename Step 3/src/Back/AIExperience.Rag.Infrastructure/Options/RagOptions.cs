@@ -52,6 +52,14 @@ public sealed class RetrievalOptions
 
     /// <summary>Score de similarité cosinus minimum pour retenir un chunk. Par défaut : 0.3.</summary>
     public double ScoreThreshold { get; set; } = 0.3;
+
+    /// <summary>
+    /// Configuration de recherche texte Postgres (regconfig) utilisée par SearchFullTextAsync
+    /// et SearchLexicalAsync pour analyser la question (ex. "french", "english"). Reste globale
+    /// et configurable plutôt que détectée par question : peu fiable sur un texte court.
+    /// (Constat I-6 du plan Lot 2)
+    /// </summary>
+    public string FullTextLanguage { get; set; } = "french";
 }
 
 /// <summary>Options pour le reranker cross-encoder.</summary>

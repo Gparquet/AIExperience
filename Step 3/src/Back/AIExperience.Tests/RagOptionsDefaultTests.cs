@@ -66,4 +66,14 @@ public sealed class RagOptionsDefaultTests
         _sut.Cache.Enabled.Should().BeFalse(
             because: "le cache n'est pas implémenté, la config ne doit pas prétendre le contraire");
     }
+
+    // ── I-6 : langue de la recherche full-text ────────────────────────────────
+
+    [Fact]
+    public void Retrieval_DefaultFullTextLanguage_IsFrench()
+    {
+        // Langue de requête configurable globalement (détecter la langue d'une question
+        // courte est peu fiable) — cf. constat I-6 du plan Lot 2.
+        _sut.Retrieval.FullTextLanguage.Should().Be("french");
+    }
 }
