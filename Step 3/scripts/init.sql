@@ -60,11 +60,12 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     -- Valeur en secondes (double precision) ; NULL pour les documents non-vidéo.
     start_time_seconds   DOUBLE PRECISION,
     end_time_seconds     DOUBLE PRECISION,
-    -- I-17 : colonne tsvector générée pour l'index GIN (recherche full-text rapide).
-    -- GENERATED ALWAYS AS … STORED : calculé une fois à l'INSERT/UPDATE, stocké physiquement.
-    -- ⚠️  La langue 'french' est figée ici ; à rendre configurable si besoin multilingue (I-6).
-    content_tsv          tsvector
-                         GENERATED ALWAYS AS (to_tsvector('french', content)) STORED,
+    -- I-6 (Lot 2) : content_tsv N'EST PLUS une colonne GENERATED.
+    -- to_tsvector(regconfig, text) est STABLE (pas IMMUTABLE) : Postgres interdit les colonnes
+    -- générées dont le regconfig varie par ligne. La valeur est donc calculée explicitement par
+    -- l'application dans l'INSERT/UPDATE (PgVectorStoreService.UpsertAsync), avec le regconfig
+    -- correspondant à la langue détectée du document (au lieu de 'french' figé).
+    content_tsv          tsvector,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -77,7 +78,8 @@ CREATE INDEX IF NOT EXISTS ix_document_chunks_embedding_hnsw
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
 
--- I-17 : index GIN sur la colonne tsvector générée.
+-- I-17 : index GIN sur la colonne tsvector content_tsv (I-6 : peuplée par l'application,
+-- plus par une colonne GENERATED — voir commentaire ci-dessus).
 -- Permet SearchFullTextAsync d'atteindre O(log N) au lieu d'un scan séquentiel complet.
 CREATE INDEX IF NOT EXISTS ix_document_chunks_content_tsv
     ON document_chunks
