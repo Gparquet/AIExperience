@@ -1,5 +1,6 @@
 using AIExperience.Rag.Application.Common.Behaviors;
 using AIExperience.Rag.Application.Services;
+using AIExperience.Rag.Application.Services.LanguageDetection;
 using AIExperience.Rag.Application.Services.TextExtractor;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Rag.Domain.Interfaces.Services.Video;
@@ -21,6 +22,7 @@ namespace AIExperience.Rag.Application
                      .ConfigureMediatR()
                      .AddChunker()
                      .AddTextExtractors()
+                     .AddLanguageDetection()
                      .AddIngestion();
         }
 
@@ -65,6 +67,13 @@ namespace AIExperience.Rag.Application
             // VideoTextExtractor dépend de IVideoProcessorService + ITranscriptionService (Infrastructure Singletons)
             services.AddSingleton<ITextExtractor, VideoTextExtractor>();
             services.AddSingleton<ICompositeTextExtractor, CompositeTextExtractor>();
+            return services;
+        }
+
+        /// <summary>Enregistre le service de détection de langue (I-6).</summary>
+        public static IServiceCollection AddLanguageDetection(this IServiceCollection services)
+        {
+            services.AddSingleton<ILanguageDetectionService, StopwordLanguageDetectionService>();
             return services;
         }
     }
