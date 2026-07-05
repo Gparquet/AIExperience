@@ -89,6 +89,18 @@ public class Document
     }
 
     /// <summary>
+    /// Met à jour la langue détectée du document (constat I-6 du plan Lot 2) : appelée après
+    /// détection automatique sur le texte extrait, pour que <c>content_tsv</c> soit indexé
+    /// avec le bon dictionnaire Postgres au lieu de "french" figé.
+    /// </summary>
+    /// <param name="language">Code ISO 639-1 détecté (ex. "fr", "en").</param>
+    public void SetDetectedLanguage(string language)
+    {
+        Metadata = Metadata with { Language = language };
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    /// <summary>
     /// Passe le statut du document à <see cref="IngestionStatus.Processing"/>.
     /// </summary>
     public void MarkAsProcessing()
