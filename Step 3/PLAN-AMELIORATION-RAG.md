@@ -10,6 +10,12 @@
 > seuil cosinus ne discrimine pas signal/bruit sur ce corpus, cf. §4.5) → déprioritisé au profit de
 > **R-18** (reranker batché), livré (commit `69b8282`). **R-17 livré** (`RagStrategyResolver` +
 > `Cache.Enabled=false` par défaut) → **Lot 0-bis 100 % livré**.
+> **Révision : 2026-07-05** — **Lot 2 livré** (I-2 : extracteurs DOCX/XLSX/CSV/PPTX/TXT/MD/JSON ;
+> I-6 : détection de langue heuristique fr/en/es/de/it + `content_tsv` par langue détectée au lieu
+> de `'french'` figé). I-4 (OCR) explicitement hors périmètre, reporté. Implémenté via 14 tâches
+> TDD (`docs/superpowers/plans/2026-07-03-lot2-multi-format-langue.md`), revues une à une puis en
+> revue finale de branche (corrections : validateur d'upload `.doc`/`.xls`/`.md`, asymétrie langue
+> index/requête FTS documentée comme limitation connue). Commits `5f761f1`..`e5a2142`.
 
 ---
 
@@ -35,7 +41,8 @@ LLM coûteuses sont activées par défaut sans batching.
 | **Lot 0** — quick wins critiques | ✅ **Livré** (R-1, R-3, R-4, R-5/R-6 défauts, I-1, I-3, I-19 + tests) | commit `4a9dbb7` (28/06) |
 | **Lot 1** — robustesse ingestion | 🟨 **~80 % livré** (I-5, I-7, I-8, I-9 partiel, I-11, I-12, I-17, I-18) — reste : taille en tokens (I-9), I-10, I-13, I-14, I-15 | commits `f18c79a`, `61b20bc`, `f12b23a`, `742f59d` (02/07) |
 | **Lot 0-bis** — pertinence de la récupération | ✅ **100 % livré** — R-15/R-16/R-9/R-18/R-17 livrés, R-10 mesuré non viable et déprioritisé | commits `96a141a`, `69b8282` (03/07) + §4.5 |
-| **Lots 2, 3, 4** | ⏳ Non commencés | — |
+| **Lot 2** — multi-format complet | ✅ **Livré** — I-2 (DOCX/XLSX/CSV/PPTX/TXT/MD/JSON) + I-6 (détection de langue + `content_tsv` par langue). I-4 (OCR) hors périmètre | commits `5f761f1`..`e5a2142` (05/07), plan `docs/superpowers/plans/2026-07-03-lot2-multi-format-langue.md` |
+| **Lots 3, 4** | ⏳ Non commencés | — |
 
 > ⚠️ **Effet de bord du Lot 0, non anticipé** : la désactivation du reranker (R-5) a supprimé la
 > coupe à `TopKAfterRerank = 5` et la compression ne filtre plus les chunks « AUCUN ». Le dernier
@@ -181,11 +188,11 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 > actuel et comparer les citations retournées avant et après chaque correctif du lot — sinon la
 > calibration du seuil (point 25) se fait à l'aveugle.
 
-### 🥉 Lot 2 — Multi-format complet (5 à 8 jours)
+### 🥉 Lot 2 — Multi-format complet (5 à 8 jours) — ✅ LIVRÉ (05/07, sauf I-4 hors périmètre)
 
-12. **I-2 Nouveaux extracteurs** : DOCX (`OpenXML`), XLSX/CSV (tabulaire → texte structuré), TXT/Markdown (natif), PPTX, JSON/EML. Tous branchés dans `CompositeTextExtractor` via `CanHandle`. *Impact 5 / L.*
-13. **I-4 OCR PDF scannés** : détection « PDF image » → OCR (Tesseract) en repli. *Impact 3 / L.*
-14. **I-6 Détection de langue** (ex. `LanguageDetection`) propagée à `to_tsvector(<langue>)` et à Whisper. *Impact 3 / M.*
+12. ✅ **I-2 Nouveaux extracteurs** : DOCX (`DocumentFormat.OpenXml`), XLSX/CSV (`ClosedXML` + parseur RFC 4180 maison, tabulaire → texte structuré), TXT/Markdown (natif), PPTX (`DocumentFormat.OpenXml`, pagination par slide), JSON (aplatissement récursif). Tous branchés dans `CompositeTextExtractor` via `CanHandle`, validateur d'upload et front-end mis à jour en cohérence. *Livré — commits `5f761f1`..`6678b08`.* (EML non traité — non demandé lors de l'implémentation.)
+13. ⏳ **I-4 OCR PDF scannés** : détection « PDF image » → OCR (Tesseract) en repli. **Explicitement reporté** à un lot ultérieur (décision utilisateur lors du cadrage du Lot 2 — dépendance native plus lourde à valider). *Impact 3 / L.*
+14. ✅ **I-6 Détection de langue** : heuristique maison par fréquence de mots vides (fr/en/es/de/it, zéro dépendance externe — choix délibéré pour rester cohérent avec la philosophie 100 % locale du projet), propagée à `content_tsv` (colonne non générée, calculée par l'application avec le `regconfig` correspondant à la langue détectée). Vidéo/Whisper déjà correct (langue transmise par `TranscribeVideoHandler`, seule la propagation en aval manquait). **Limitation connue documentée** : la requête full-text reste analysée dans une langue unique configurable (`RagOptions.Retrieval.FullTextLanguage`), pas détectée par question — un corpus multi-langues peut donc avoir une correspondance dégradée pour les documents dans une langue différente de celle configurée. *Livré — commits `312b004`..`e5a2142`.*
 
 ### 🏅 Lot 3 — Qualité & performance de la restitution (5 à 8 jours)
 
