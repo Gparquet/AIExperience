@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { DocumentResponse } from '../types';
 
+// Formats supportés côté back-end (CompositeTextExtractor) — I-2 du plan Lot 2.
+const ACCEPTED_EXTENSIONS =
+  '.pdf,.html,.htm,.docx,.xlsx,.csv,.pptx,.txt,.md,.json,.mp4,.mkv,.webm,.avi,.mov,.wav,.mp3,.m4a,.ogg,.flac';
+
 export default function DocumentsPage() {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
@@ -121,11 +125,11 @@ export default function DocumentsPage() {
           )}
           <label className={`btn btn-primary ${uploading ? 'btn-disabled' : ''}`}>
             {uploading && <span className="btn-spinner" />}
-            {uploading ? 'Importation…' : '+ Ajouter un PDF'}
+            {uploading ? 'Importation…' : '+ Ajouter un document'}
             <input
               ref={fileRef}
               type="file"
-              accept=".pdf"
+              accept={ACCEPTED_EXTENSIONS}
               hidden
               onChange={handleUpload}
               disabled={uploading}
