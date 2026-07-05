@@ -97,7 +97,7 @@ public sealed class CompositeTextExtractorTests
     [InlineData("notes.txt")]
     [InlineData("readme.md")]
     [InlineData("data.json")]
-    public void ResolveExtractor_AllNewFormats_HasMatchingExtractor(string fileName)
+    public async Task ResolveExtractor_AllNewFormats_HasMatchingExtractor(string fileName)
     {
         // Arrange — tous les extracteurs réels enregistrés (hors vidéo, qui a des dépendances Infrastructure)
         var sut = new CompositeTextExtractor(
@@ -115,7 +115,7 @@ public sealed class CompositeTextExtractorTests
         // Act + Assert — ne doit PAS lever NotSupportedException (un extracteur gère bien le format)
         var act = async () => await sut.ExtractTextAsync(fileName, CancellationToken.None);
         // On s'attend à une autre exception (fichier introuvable/invalide) mais jamais NotSupportedException.
-        act.Should().NotThrowAsync<NotSupportedException>();
+        await act.Should().NotThrowAsync<NotSupportedException>();
     }
 
     [Fact]
