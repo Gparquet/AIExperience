@@ -79,7 +79,7 @@ CREATE INDEX IF NOT EXISTS ix_document_chunks_embedding_hnsw
     WITH (m = 16, ef_construction = 64);
 
 -- I-17 : index GIN sur la colonne tsvector content_tsv (I-6 : peuplée par l'application,
--- plus par une colonne GENERATED — voir commentaire ci-dessus).
+-- non plus par une colonne GENERATED — voir commentaire ci-dessus).
 -- Permet SearchFullTextAsync d'atteindre O(log N) au lieu d'un scan séquentiel complet.
 CREATE INDEX IF NOT EXISTS ix_document_chunks_content_tsv
     ON document_chunks
