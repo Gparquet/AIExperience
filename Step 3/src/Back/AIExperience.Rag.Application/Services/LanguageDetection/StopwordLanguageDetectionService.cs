@@ -41,7 +41,7 @@ public sealed partial class StopwordLanguageDetectionService : ILanguageDetectio
         ["es"] = new(StringComparer.OrdinalIgnoreCase)
         {
             "el","la","de","que","y","a","en","un","ser","se","no","por","con","su","para","como",
-            "estar","tener","lo","todo","pero","hacer","o","poder","decir","este","ir","mundo","vea"
+            "estar","tener","lo","todo","pero","hacer","o","poder","decir","este","ir","muy","así","cuando"
         },
         ["de"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -51,7 +51,7 @@ public sealed partial class StopwordLanguageDetectionService : ILanguageDetectio
         ["it"] = new(StringComparer.OrdinalIgnoreCase)
         {
             "il","di","che","è","e","la","per","un","in","non","mi","si","con","lo","ho","ma","ci",
-            "come","da","i","questa","quello","gli","le","tu","se","noi","lei","suo","tanti"
+            "come","da","i","questa","quello","gli","le","tu","se","noi","lei","suo","anche","però"
         }
     };
 
