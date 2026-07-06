@@ -16,6 +16,10 @@
 > TDD (`docs/superpowers/plans/2026-07-03-lot2-multi-format-langue.md`), revues une à une puis en
 > revue finale de branche (corrections : validateur d'upload `.doc`/`.xls`/`.md`, asymétrie langue
 > index/requête FTS documentée comme limitation connue). Commits `5f761f1`..`e5a2142`.
+> **Révision : 2026-07-06** — diagnostic du symptôme *« restitution médiocre sur les vidéos »* :
+> ajout des constats **I-21** (timestamps inline embeddés — l'équivalent vidéo de R-15) et **I-22**
+> (double chemin d'ingestion vidéo incohérent), et insertion du **Lot 2-bis — Qualité de la
+> restitution vidéo** (I-21, I-22, I-10 remonté du reliquat Lot 1, montée de modèle Whisper).
 
 ---
 
@@ -42,6 +46,7 @@ LLM coûteuses sont activées par défaut sans batching.
 | **Lot 1** — robustesse ingestion | 🟨 **~80 % livré** (I-5, I-7, I-8, I-9 partiel, I-11, I-12, I-17, I-18) — reste : taille en tokens (I-9), I-10, I-13, I-14, I-15 | commits `f18c79a`, `61b20bc`, `f12b23a`, `742f59d` (02/07) |
 | **Lot 0-bis** — pertinence de la récupération | ✅ **100 % livré** — R-15/R-16/R-9/R-18/R-17 livrés, R-10 mesuré non viable et déprioritisé | commits `96a141a`, `69b8282` (03/07) + §4.5 |
 | **Lot 2** — multi-format complet | ✅ **Livré** — I-2 (DOCX/XLSX/CSV/PPTX/TXT/MD/JSON) + I-6 (détection de langue + `content_tsv` par langue). I-4 (OCR) hors périmètre | commits `5f761f1`..`e5a2142` (05/07), plan `docs/superpowers/plans/2026-07-03-lot2-multi-format-langue.md` |
+| **Lot 2-bis** — qualité de la restitution vidéo | 🔜 **Prochain lot** — I-21, I-22, I-10, Whisper `medium` (voir révision 06/07) | — |
 | **Lots 3, 4** | ⏳ Non commencés | — |
 
 > ⚠️ **Effet de bord du Lot 0, non anticipé** : la désactivation du reranker (R-5) a supprimé la
@@ -98,6 +103,8 @@ LLM coûteuses sont activées par défaut sans batching.
 |---|---------|--------------|--------|
 | I-19 | **Bug Whisper langue** : `GetOrCreateProcessorAsync(language)` construit le processeur avec la **1ʳᵉ langue** reçue et le met en cache (Singleton). Les appels suivants avec une autre langue **réutilisent le mauvais processeur** | [WhisperTranscriptionService.cs:85-119](Step%203/src/Back/AIExperience.Rag.Infrastructure/AI/Transcription/WhisperTranscriptionService.cs#L85-L119) | 🔴 Transcription multilingue fausse |
 | I-20 | Pas de VAD ni de découpage des vidéos longues : tout le fichier en une passe, sans progression ni gestion mémoire | `WhisperTranscriptionService` | 🟡 Robustesse gros fichiers |
+| I-21 | **Timestamps inline embeddés** *(nouveau — révision 06/07)* : `TemporalChunker` incruste `[HH:MM:SS → HH:MM:SS]` dans le `Content` de chaque chunk, et c'est ce texte formaté qui part à l'embedding. Les segments Whisper étant courts, **~25–35 % de chaque chunk vidéo est du bruit numérique** → similarité question/chunk effondrée. Les timestamps sont pourtant déjà persistés proprement (`StartTime`/`EndTime`) | [TemporalChunker.cs:53](Step%203/src/Back/AIExperience.Rag.Application/Services/TemporalChunker.cs#L53), [IngestionService.cs:137](Step%203/src/Back/AIExperience.Rag.Application/Services/IngestionService.cs#L137) | 🔴 Restitution vidéo dégradée |
+| I-22 | **Double chemin d'ingestion vidéo incohérent** *(nouveau — révision 06/07)* : la page Documents accepte `.mp4/.mkv/…` mais ce chemin passe par `VideoTextExtractor.ExtractTextAsync` qui fige la langue à `"fr"` et retourne `FullText` (timestamps inline inclus) découpé par le `RecursiveChunker` texte → coupes arbitraires, **aucun `StartTime`/`EndTime`**, citations sans repère temporel. Seul `POST /api/video/transcribe` emprunte le bon chemin (`IngestFromSegmentsAsync`) | [VideoTextExtractor.cs:59](Step%203/src/Back/AIExperience.Rag.Application/Services/TextExtractor/VideoTextExtractor.cs#L59), [DocumentsPage.tsx:8](Step%203/src/Front/src/pages/DocumentsPage.tsx#L8) | 🔴 Qualité dépendante du point d'entrée |
 
 ---
 
@@ -166,9 +173,9 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 10. ✅ **I-17 Index full-text GIN** : colonne générée `content_tsv` + index GIN, requête ciblant la colonne indexée. *Livré — commit `f12b23a`.*
 11. ✅ **I-18 Réaligner `init.sql`** : colonnes temporelles + `content_tsv` + index GIN intégrés. *Livré — commit `f12b23a`.*
 
-> Reliquat Lot 1 (reporté, non bloquant) : **I-9** taille en tokens, **I-10** segment Whisper
-> surdimensionné, **I-13** validation de la dimension d'embedding, **I-14** idempotence (doublons),
-> **I-15** `COPY` binaire.
+> Reliquat Lot 1 (reporté, non bloquant) : **I-9** taille en tokens, ~~**I-10** segment Whisper
+> surdimensionné~~ *(remonté au Lot 2-bis, point 31)*, **I-13** validation de la dimension
+> d'embedding, **I-14** idempotence (doublons), **I-15** `COPY` binaire.
 
 ### 🎯 Lot 0-bis — Pertinence de la récupération (2 à 4 jours) — 🔜 PROCHAIN LOT
 
@@ -194,6 +201,35 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 13. ⏳ **I-4 OCR PDF scannés** : détection « PDF image » → OCR (Tesseract) en repli. **Explicitement reporté** à un lot ultérieur (décision utilisateur lors du cadrage du Lot 2 — dépendance native plus lourde à valider). *Impact 3 / L.*
 14. ✅ **I-6 Détection de langue** : heuristique maison par fréquence de mots vides (fr/en/es/de/it, zéro dépendance externe — choix délibéré pour rester cohérent avec la philosophie 100 % locale du projet), propagée à `content_tsv` (colonne non générée, calculée par l'application avec le `regconfig` correspondant à la langue détectée). Vidéo/Whisper déjà correct (langue transmise par `TranscribeVideoHandler`, seule la propagation en aval manquait). **Limitation connue documentée** : la requête full-text reste analysée dans une langue unique configurable (`RagOptions.Retrieval.FullTextLanguage`), pas détectée par question — un corpus multi-langues peut donc avoir une correspondance dégradée pour les documents dans une langue différente de celle configurée. *Livré — commits `312b004`..`e5a2142`.*
 
+### 🎬 Lot 2-bis — Qualité de la restitution vidéo (2 à 4 jours) — 🔜 PROCHAIN LOT
+
+> **Nouveau (révision 06/07).** Répond au symptôme observé en usage réel : *« la restitution
+> n'est pas top sur les vidéos quand je pose une question »*. Cause n°1 : le texte embeddé des
+> chunks vidéo est pollué par les timestamps inline (I-21) — l'équivalent vidéo du R-15 qui avait
+> corrigé les sources hors sujet. Cause n°2 : selon la page utilisée pour uploader (Documents vs
+> Vidéo), la qualité d'ingestion n'est pas la même (I-22).
+
+29. **I-21 Contenu de chunk épuré** : `TemporalChunker` garde le **texte pur** dans `Content` ;
+    le timing reste porté par `StartTime`/`EndTime` (déjà persistés et propagés aux citations).
+    Pour que le LLM puisse citer un horodatage, injecter la plage temporelle dans **l'en-tête
+    d'extrait** de `BuildChatHistoryAsync` (`[Extrait i] Source: …, 00:12:30–00:13:10`), là où
+    page/section sont déjà injectés. ⚠️ **Ré-ingestion des vidéos obligatoire** (vecteurs stockés
+    calculés sur le texte pollué). *Impact 5 / S.*
+30. **I-22 Unifier les chemins d'ingestion vidéo** : l'upload d'une vidéo via `POST /api/documents`
+    doit déboucher sur `IngestFromSegmentsAsync` (langue paramétrable, timestamps préservés), pas
+    sur `FullText` + chunker texte. À défaut, court terme : retirer les extensions vidéo/audio de
+    la page Documents et du validateur d'upload pour forcer le passage par la page Vidéo. *Impact 4 / M.*
+31. **I-10 Chunking temporel** *(remonté du reliquat Lot 1)* : cible exprimée en caractères
+    **utiles** (~1 200–1 500, hors balisage), **overlap de 1–2 segments** entre chunks, scission
+    d'un segment surdimensionné avec interpolation des timestamps. *Impact 3 / S-M.*
+32. **Whisper `medium`** : passer `ModelPath` de `ggml-small.bin` à `ggml-medium.bin` — meilleure
+    matière première de transcription (config uniquement, au prix de la latence de transcription).
+    *Impact 2-3 / S.*
+
+> **Vérification avant/après (mini R-13, même règle que le Lot 0-bis)** : constituer ~5 questions
+> « golden » sur une vidéo de référence du corpus et comparer citations et réponses avant/après
+> I-21 — c'est le correctif dont l'effet doit être le plus visible.
+
 ### 🏅 Lot 3 — Qualité & performance de la restitution (5 à 8 jours)
 
 15. ~~**R-5/R-6 Rerank & compression batchés**~~ → **remonté au Lot 0-bis (point 26)** pour le rerank ; la compression batchée reste ici, conditionnée au dépassement du budget tokens (R-11). *Impact 5 / M.*
@@ -216,14 +252,16 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 Semaine 1 : Lot 0 (quick wins critiques) ─────────────► ✅ LIVRÉ (28/06)
 Semaine 2 : Lot 1 (robustesse ingestion) ─────────────► 🟨 ~80 % LIVRÉ (02/07)
 Semaine 3 : Lot 0-bis (pertinence récupération) ──────► ✅ LIVRÉ (03/07) — corrige les sources hors sujet
-Semaine 4-5 : Lot 2 (multi-format) ‖ Lot 3 (restitution restante) en parallèle
+Semaine 4 : Lot 2 (multi-format) ─────────────────────► ✅ LIVRÉ (05/07)
+Semaine 5 : Lot 2-bis (restitution vidéo) ────────────► 🔜 PROCHAIN — corrige la restitution vidéo
+Ensuite   : Lot 3 (restitution restante — R-2, R-11, R-4/R-8)
 Continu   : Lot 4 (async, observabilité, évaluation) + reliquat Lot 1
 ```
 
-**Trois actions à plus fort ratio impact/effort à faire en premier (révision 02/07)** :
-1. **R-15** (préfixes `search_query:`/`search_document:` + ré-ingestion) — restaure la séparation pertinent/non-pertinent de `nomic-embed`.
-2. **R-16** (`.Take(TopK)` après RRF) — 1 ligne, évite jusqu'à 40 chunks en contexte/citations en mode Fusion.
-3. **R-10** (seuil calibré + TopK réduit) — filtre le bruit résiduel du Top-K.
+**Trois actions à plus fort ratio impact/effort à faire en premier (révision 06/07)** :
+1. **I-21** (timestamps hors du texte embeddé + ré-ingestion des vidéos) — restaure la similarité question/chunk sur les vidéos, comme R-15 l'avait fait pour les documents.
+2. **I-22** (unification des chemins d'ingestion vidéo) — supprime la dépendance de la qualité au point d'entrée d'upload.
+3. **I-10/point 31** (chunks temporels plus denses + overlap) — améliore le recall sur la parole, peu dense par nature.
 
 ---
 
@@ -234,8 +272,9 @@ Continu   : Lot 4 (async, observabilité, évaluation) + reliquat Lot 1
 - **Couverture de tests en progression** : Lot 0 et Lot 1 sont venus avec des tests (chunker, pagination PDF, batching, extracteurs, prompts, défauts d'options). Le Lot 0-bis doit suivre la même règle (préfixes, troncature RRF, calibration).
 - **Modèle LLM local 1B** : qualité limitée ; le harnais d'évaluation (R-13) permettra d'arbitrer un éventuel passage à un modèle plus capable. Le routage **Adaptive** dépend aussi de ce 1B : tant qu'il n'est pas évalué, préférer `Direct` par défaut est une option défendable.
 - **Ré-ingestion obligatoire après R-15** (préfixes `nomic`) : les vecteurs stockés sans préfixe sont incompatibles avec des requêtes préfixées. Prévoir un vidage/ré-upload du corpus (ou un script de ré-ingestion) dans le même lot.
+- **Ré-ingestion des vidéos obligatoire après I-21** : les vecteurs des chunks vidéo ont été calculés sur le texte pollué par les timestamps inline ; ils doivent être recalculés sur le texte épuré (même logique que R-15, limitée aux documents vidéo/audio).
 
-> Lot 0-bis (points 23 à 28) livré en travaillant directement sur `main`. Prochaine étape suggérée : Lot 2 (multi-format) ou Lot 3 (restitution restante — R-2, R-11, R-4/R-8) selon la priorité opérationnelle.
+> Lot 0-bis (points 23 à 28) et Lot 2 (points 12 à 14) livrés. Prochaine étape suggérée : **Lot 2-bis** (restitution vidéo, points 29 à 32) — répond au symptôme observé en usage réel — puis Lot 3 (restitution restante — R-2, R-11, R-4/R-8).
 
 ---
 
@@ -598,6 +637,58 @@ private WhisperProcessor GetProcessor(string language)
 **Pourquoi c'est grave.** Sur une vidéo de plusieurs heures : mémoire élevée, aucune progression, et un échec en fin de traitement perd tout.
 
 **Correctif (Lot 2/4).** Découper l'audio en fenêtres (ex. 10 min) via FFmpeg, transcrire par fenêtre avec décalage de timestamps, remonter la progression. Optionnellement, VAD pour sauter les silences.
+
+#### I-21 — Timestamps inline embeddés *(nouveau — révision 06/07)*
+
+**Mécanisme.** `TemporalChunker.FormatLine` produit `[HH:MM:SS → HH:MM:SS] texte` pour **chaque segment Whisper**, et `BuildChunk` concatène ces lignes dans `TextChunk.Content`. `IngestFromSegmentsAsync` embed ensuite ce `Content` tel quel :
+
+```csharp
+// TemporalChunker.cs — le préfixe de ~24 caractères est incrusté dans le contenu
+private static string FormatLine(TranscriptionSegment segment)
+    => $"[{segment.Start:hh\\:mm\\:ss} → {segment.End:hh\\:mm\\:ss}] {segment.Text.Trim()}\n";
+
+// IngestionService.cs — c'est ce contenu formaté qui part à l'embedding
+var embeddings = await embeddingService.EmbedBatchAsync(textChunks.Select(c => c.Content), EmbeddingTaskType.Document, ct);
+```
+
+Un segment Whisper fait typiquement 40–80 caractères de parole : le préfixe représente donc **25 à 35 % du chunk**. De plus, la limite `maxCharsPerChunk = 800` compte ce balisage — le contenu *utile* d'un chunk vidéo est ~500–600 caractères, contre 800 pour un PDF.
+
+**Pourquoi c'est grave.** Pour `nomic-embed-text`, ces préfixes sont des tokens numériques répétitifs sans valeur sémantique : le vecteur du chunk est « moyenné » vers du bruit, la similarité avec une vraie question chute. C'est la cause structurelle n°1 de la restitution vidéo médiocre — l'équivalent vidéo du R-15. Effet secondaire : les extraits de citations (`Content[..350]`) affichent ce bruit dans l'UI.
+
+**L'ironie.** Les timestamps sont **déjà** portés proprement par `TextChunk.StartTime`/`EndTime`, persistés en base (`start_time_seconds`/`end_time_seconds`) et propagés jusqu'aux `Citation` — la version inline est redondante pour la restitution.
+
+**Correctif.**
+1. `TemporalChunker` : `Content` = texte pur des segments (concaténation simple), `StartTime`/`EndTime` inchangés.
+2. Pour que le LLM puisse citer un horodatage, l'injecter dans l'**en-tête d'extrait** de `BuildChatHistoryAsync`, là où page/section sont déjà injectés :
+
+```csharp
+// RagPipelineService.BuildChatHistoryAsync — plage temporelle en en-tête, pas dans le corps
+var time = chunk.StartTime is { } st && chunk.EndTime is { } et
+    ? $", {st:hh\\:mm\\:ss}–{et:hh\\:mm\\:ss}"
+    : string.Empty;
+contextBuilder.AppendLine($"[Extrait {i}] Source: {source}{page}{section}{time}");
+```
+
+3. ⚠️ **Ré-ingérer les documents vidéo/audio** (les vecteurs stockés ont été calculés sur le texte pollué).
+
+#### I-22 — Double chemin d'ingestion vidéo incohérent *(nouveau — révision 06/07)*
+
+**Mécanisme.** Deux points d'entrée ingèrent une vidéo, avec deux qualités très différentes :
+
+| | Page Vidéo (`POST /api/video/transcribe`) | Page Documents (`POST /api/documents`) |
+|---|---|---|
+| Chunking | `TemporalChunker` (frontières de segments) | `RecursiveChunker` texte (coupes arbitraires au milieu des lignes horodatées) |
+| Timestamps par chunk | ✅ `StartTime`/`EndTime` | ❌ `null` → citations sans repère temporel |
+| Langue Whisper | ✅ paramétrable (`language` de la requête) | ❌ figée à `"fr"` (`VideoTextExtractor.ExtractTextAsync`) |
+| Texte embeddé | pollué par I-21 | pollué par I-21 **et** découpé n'importe où |
+
+La page Documents accepte pourtant `.mp4/.mkv/.webm/.avi/.mov` + audio (`DocumentsPage.tsx`, `UploadDocumentValidator`) : rien n'oriente l'utilisateur vers le bon chemin.
+
+**Pourquoi c'est grave.** La qualité de restitution dépend silencieusement de la page utilisée pour uploader. Une vidéo passée par la page Documents est ininterrogeable correctement (chunks sans timestamps, transcription potentiellement dans la mauvaise langue) sans qu'aucune erreur ne le signale.
+
+**Correctif.**
+- **Cible** : dans le flux d'upload documents, détecter les extensions vidéo/audio et router vers le pipeline segments (`TranscribeVideoCommand`/`IngestFromSegmentsAsync`) avec langue paramétrable — un seul pipeline vidéo, quel que soit le point d'entrée.
+- **Court terme** (si le routage est reporté) : retirer les extensions vidéo/audio de `DocumentsPage.tsx` et du `UploadDocumentValidator`, et afficher un message orientant vers la page Vidéo.
 
 ## B. RESTITUTION (RAG / LLM)
 
