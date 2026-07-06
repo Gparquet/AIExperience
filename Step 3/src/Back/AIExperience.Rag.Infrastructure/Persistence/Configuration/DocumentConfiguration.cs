@@ -26,6 +26,7 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.CreatedAt).HasColumnName("created_at");
         builder.Property(d => d.UpdatedAt).HasColumnName("updated_at");
         builder.Property(d => d.FileSizeBytes).HasColumnName("file_size_bytes");
+        builder.Property(d => d.ContentHash).HasColumnName("content_hash").HasMaxLength(64).IsRequired();
 
         builder.OwnsOne(d => d.Metadata, metadata =>
         {
@@ -49,5 +50,6 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.HasIndex(d => d.UserId);
         builder.HasIndex(d => d.Status);
         builder.HasIndex(d => d.CreatedAt);
+        builder.HasIndex(d => new { d.UserId, d.FileName, d.ContentHash });
     }
 }

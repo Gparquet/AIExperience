@@ -23,7 +23,8 @@ namespace AIExperience.Rag.Application
                      .AddChunker()
                      .AddTextExtractors()
                      .AddLanguageDetection()
-                     .AddIngestion();
+                     .AddIngestion()
+                     .AddFileHashing();
         }
 
         public static IServiceCollection ConfigureMediatR(this IServiceCollection services)
@@ -74,6 +75,14 @@ namespace AIExperience.Rag.Application
         public static IServiceCollection AddLanguageDetection(this IServiceCollection services)
         {
             services.AddSingleton<ILanguageDetectionService, StopwordLanguageDetectionService>();
+            return services;
+        }
+
+        /// <summary>Enregistre le service de calcul de hash de fichier (détection de doublon à l'upload).</summary>
+        public static IServiceCollection AddFileHashing(this IServiceCollection services)
+        {
+            // Singleton : sans état, réutilisable en concurrence (même pattern que TemporalChunker).
+            services.AddSingleton<IFileHashService, FileHashService>();
             return services;
         }
     }

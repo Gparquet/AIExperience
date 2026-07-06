@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS documents (
     file_name            VARCHAR(255) NOT NULL,
     content_type         VARCHAR(100) NOT NULL,
     file_size_bytes      BIGINT       NOT NULL DEFAULT 0,
+    content_hash         VARCHAR(64)  NOT NULL DEFAULT '',
     user_id              VARCHAR(255) NOT NULL,
     status               VARCHAR(50)  NOT NULL DEFAULT 'Pending',
     chunking_strategy    VARCHAR(50)  NOT NULL DEFAULT 'Recursive',
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS ix_documents_user_id    ON documents (user_id);
 CREATE INDEX IF NOT EXISTS ix_documents_status     ON documents (status);
 CREATE INDEX IF NOT EXISTS ix_documents_created_at ON documents (created_at);
+CREATE INDEX IF NOT EXISTS ix_documents_user_filename_hash ON documents (user_id, file_name, content_hash);
 
 -- ============================================================
 -- TABLE : document_chunks

@@ -45,4 +45,14 @@ public interface IDocumentRepository
     /// <param name="id">Identifiant du document à supprimer.</param>
     /// <param name="ct">Jeton d'annulation.</param>
     Task DeleteAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Recherche le document le plus récent portant ce nom de fichier, pour un utilisateur donné
+    /// (détection de doublon / nouvelle version). Ignore le hash de contenu : c'est à l'appelant
+    /// de comparer le hash du document retourné pour distinguer un doublon exact d'une nouvelle version.
+    /// </summary>
+    /// <param name="userId">Identifiant de l'utilisateur.</param>
+    /// <param name="fileName">Nom du fichier à comparer.</param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    Task<Document?> GetLatestByFileNameAsync(string userId, string fileName, CancellationToken ct = default);
 }

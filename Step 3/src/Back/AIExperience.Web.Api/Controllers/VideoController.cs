@@ -1,5 +1,6 @@
 using AIExperience.Rag.Application.Video;
 using AIExperience.Rag.Application.Video.Command;
+using AIExperience.Web.Api.Helpers;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 
@@ -35,32 +36,18 @@ public class VideoController(ISender sender) : ControllerBase
         if (file is null || file.Length == 0)
             return BadRequest("Fichier manquant ou vide.");
 
-        // Sauvegarder le fichier temporairement pour que le handler puisse y accéder
-        var tempPath = Path.Combine(
-            Path.GetTempPath(),
-            Guid.NewGuid() + Path.GetExtension(file.FileName));
+        // Sauvegarde le fichier temporairement (supprimé automatiquement à la fin du bloc) pour que le handler puisse y accéder
+        await using var tempFile = await TempUploadedFile.CreateAsync(file, cancellationToken);
 
-        await using (var stream = System.IO.File.Create(tempPath))
-            await file.CopyToAsync(stream, cancellationToken);
-
-        try
+        var response = await sender.Send(new TranscribeVideoCommand
         {
-            var response = await sender.Send(new TranscribeVideoCommand
-            {
-                FilePath = tempPath,
-                Language = language,
-                CleanWithLlm = cleanWithLlm,
-                AutoIngest = autoIngest,
-                Title = title ?? Path.GetFileNameWithoutExtension(file.FileName)
-            }, cancellationToken);
+            FilePath = tempFile.Path,
+            Language = language,
+            CleanWithLlm = cleanWithLlm,
+            AutoIngest = autoIngest,
+            Title = title ?? Path.GetFileNameWithoutExtension(file.FileName)
+        }, cancellationToken);
 
-            return Ok(response);
-        }
-        finally
-        {
-            // Supprimer le fichier temporaire (le handler a déjà consommé le chemin)
-            if (System.IO.File.Exists(tempPath))
-                System.IO.File.Delete(tempPath);
-        }
+        return Ok(response);
     }
 }
