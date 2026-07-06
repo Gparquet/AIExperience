@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import type { DocumentResponse } from '../types';
+import type { DocumentMatchType, DocumentResponse, ExistingDocumentInfo } from '../types';
 
 // Formats supportés côté back-end (CompositeTextExtractor) — I-2 du plan Lot 2.
 const ACCEPTED_EXTENSIONS =
@@ -17,6 +17,8 @@ export default function DocumentsPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Doublon ou nouvelle version détecté(e) en attente de confirmation utilisateur.
+  const [pendingDuplicate, setPendingDuplicate] = useState<{ file: File; existing: ExistingDocumentInfo; matchType: DocumentMatchType } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const checkAllRef = useRef<HTMLInputElement>(null);
 
@@ -44,20 +46,78 @@ export default function DocumentsPage() {
     setTimeout(() => setToast(null), 3500);
   }
 
+  /** Calcule le SHA-256 (hex minuscule) d'un fichier côté navigateur, pour la pré-vérification de doublon. */
+  async function computeSha256(file: File): Promise<string> {
+    const buffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     setError(null);
     try {
+      // Si crypto.subtle est indisponible (contexte non sécurisé), on saute la pré-vérification :
+      // le 409 renvoyé par le back-end (garde-fou serveur) reste la protection en dernier recours.
+      let hash: string | null = null;
+      try {
+        hash = await computeSha256(file);
+      } catch {
+        hash = null;
+      }
+
+      if (hash) {
+        const check = await api.documents.checkDuplicate(file.name, hash);
+        if (check.isDuplicate && check.existingDocument && check.matchType) {
+          setPendingDuplicate({ file, existing: check.existingDocument, matchType: check.matchType });
+          return;
+        }
+      }
+
       await api.documents.upload(file);
       await loadDocuments();
     } catch (err) {
-      setError((err as Error).message);
+      // Repli si le doublon n'a pas été intercepté par la pré-vérification (ex. crypto.subtle
+      // indisponible) : le back-end renvoie alors un 409 brut qu'on remplace par un message générique.
+      // Générique à dessein : ce 409 peut correspondre à un doublon exact ou à une nouvelle version
+      // (contenu différent), cas que ce message de repli ne distingue pas.
+      const status = (err as Error & { status?: number }).status;
+      setError(status === 409 ? 'Un document portant ce nom existe déjà.' : (err as Error).message);
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
     }
+  }
+
+  /** Confirme le remplacement du document existant par le nouveau fichier (doublon détecté). */
+  async function handleConfirmReplace() {
+    if (!pendingDuplicate) return;
+    const { file, existing } = pendingDuplicate;
+    setUploading(true);
+    setError(null);
+    try {
+      await api.documents.upload(file, 'Recursive', existing.id);
+      await loadDocuments();
+    } catch (err) {
+      // Même repli que dans handleUpload : un 409 ici signifierait une nouvelle collision
+      // détectée par le back-end au moment du remplacement (cas rare).
+      const status = (err as Error & { status?: number }).status;
+      setError(status === 409 ? 'Un document portant ce nom existe déjà.' : (err as Error).message);
+    } finally {
+      setUploading(false);
+      setPendingDuplicate(null);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  /** Annule le remplacement : ferme la popup sans appel réseau. */
+  function handleCancelReplace() {
+    setPendingDuplicate(null);
+    if (fileRef.current) fileRef.current.value = '';
   }
 
   function toggleSelect(id: string) {
@@ -236,6 +296,45 @@ export default function DocumentsPage() {
               >
                 {deleting && <span className="btn-spinner" />}
                 {deleting ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDuplicate && (
+        <div className="modal-overlay" onClick={() => !uploading && handleCancelReplace()}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            {pendingDuplicate.matchType === 'ExactDuplicate' ? (
+              <>
+                <h2>Document déjà importé</h2>
+                <p>
+                  Un document nommé « {pendingDuplicate.existing.fileName} » a déjà été importé le{' '}
+                  {new Date(pendingDuplicate.existing.createdAt).toLocaleDateString('fr-FR')}.
+                </p>
+                <p className="modal-warning">
+                  Si vous continuez, ce document existant sera supprimé et remplacé par le nouveau fichier.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2>Nouvelle version détectée</h2>
+                <p>
+                  Une version différente de « {pendingDuplicate.existing.fileName} » a déjà été importée le{' '}
+                  {new Date(pendingDuplicate.existing.createdAt).toLocaleDateString('fr-FR')}. Le contenu a changé.
+                </p>
+                <p className="modal-warning">
+                  Si vous continuez, l'ancienne version sera supprimée et remplacée par ce nouveau fichier.
+                </p>
+              </>
+            )}
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={handleCancelReplace} disabled={uploading}>
+                Annuler
+              </button>
+              <button className="btn btn-danger" onClick={handleConfirmReplace} disabled={uploading}>
+                {uploading && <span className="btn-spinner" />}
+                {uploading ? 'Remplacement…' : 'Confirmer le remplacement'}
               </button>
             </div>
           </div>

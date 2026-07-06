@@ -7,6 +7,23 @@ export interface DocumentResponse {
   createdAt: string;
 }
 
+/** Type de correspondance détecté avec un document existant de même nom. */
+export type DocumentMatchType = 'ExactDuplicate' | 'SameNameDifferentContent';
+
+/** Informations minimales sur un document existant en conflit (détection de doublon ou de nouvelle version). */
+export interface ExistingDocumentInfo {
+  id: string;
+  fileName: string;
+  createdAt: string;
+}
+
+/** Réponse de la pré-vérification de doublon avant upload. */
+export interface CheckDuplicateResponse {
+  isDuplicate: boolean;
+  existingDocument: ExistingDocumentInfo | null;
+  matchType: DocumentMatchType | null;
+}
+
 export interface CitationResponse {
   documentName: string;
   pageNumber: number | null;

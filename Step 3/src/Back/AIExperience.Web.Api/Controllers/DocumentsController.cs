@@ -1,8 +1,9 @@
 using AIExperience.Rag.Application.Document.Command;
+using AIExperience.Rag.Application.Document.Exceptions;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
-using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Web.Api.DTOs;
+using AIExperience.Web.Api.Helpers;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
@@ -13,9 +14,7 @@ namespace AIExperience.Web.Api.Controllers;
 [Route("api/[controller]")]
 public class DocumentsController(
     ISender sender,
-    IIngestionService ingestionService,
-    IDocumentRepository documentRepository,
-    IUnitOfWork unitOfWork) : ControllerBase
+    IDocumentRepository documentRepository) : ControllerBase
 {
     private const string DefaultUserId = "1ea95468-3f27-4a6d-8fb3-25fdd1530023";
 
@@ -34,54 +33,78 @@ public class DocumentsController(
         return doc is null ? NotFound() : Ok(ToResponse(doc));
     }
 
+    /// <summary>
+    /// Pré-vérification de doublon (nom + hash calculé côté navigateur), appelée par le front avant
+    /// d'envoyer le fichier complet. Purement informatif — l'autorité finale reste <see cref="Upload"/>.
+    /// </summary>
+    [HttpPost("check-duplicate")]
+    public async Task<ActionResult<CheckDuplicateResponse>> CheckDuplicate([FromBody] CheckDuplicateRequest request)
+    {
+        // Recherche le document le plus récent portant le même nom pour cet utilisateur
+        var existing = await documentRepository.GetLatestByFileNameAsync(DefaultUserId, request.FileName);
+        if (existing is null)
+            return Ok(new CheckDuplicateResponse(false, null, null));
+
+        // Compare les hashes pour distinguer un doublon exact d'un simple conflit de nom
+        var matchType = existing.ContentHash == request.ContentHash
+            ? DocumentMatchType.ExactDuplicate
+            : DocumentMatchType.SameNameDifferentContent;
+
+        // Conversion explicite en string (même convention que ToResponse pour IngestionStatus) : sans elle,
+        // System.Text.Json sérialise l'enum en entier brut faute de JsonStringEnumConverter global.
+        return Ok(new CheckDuplicateResponse(
+            true, new ExistingDocumentInfo(existing.Id, existing.FileName, existing.CreatedAt), matchType.ToString()));
+    }
+
     [HttpPost]
     public async Task<ActionResult<DocumentResponse>> Upload(
         IFormFile file,
-        [FromQuery] ChunkingStrategy strategy = ChunkingStrategy.Recursive)
+        [FromQuery] ChunkingStrategy strategy = ChunkingStrategy.Recursive,
+        [FromQuery] Guid? replaceDocumentId = null)
     {
         if (file is null || file.Length == 0)
             return BadRequest("Fichier manquant.");
 
-        var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + Path.GetExtension(file.FileName));
+        // Copie le fichier uploadé dans un fichier temporaire, supprimé automatiquement à la fin du bloc
+        await using var tempFile = await TempUploadedFile.CreateAsync(file);
 
-        await using (var stream = System.IO.File.Create(tempPath))
-            await file.CopyToAsync(stream);
-
+        UploadDocumentResponse uploadResponse;
         try
         {
-            var uploadResponse = await sender.Send(new UploadDocumentCommand
+            uploadResponse = await sender.Send(new UploadDocumentCommand
             {
                 FileName = file.FileName,
                 ContentType = GetContentType(file.FileName),
                 FileSizeBytes = file.Length,
                 UserId = DefaultUserId,
                 DocumentMetadata = new DocumentMetadata { Title = file.FileName },
-                ChunkingStrategy = strategy
+                ChunkingStrategy = strategy,
+                FilePath = tempFile.Path,
+                ReplaceDocumentId = replaceDocumentId
             });
-
-            var doc = await documentRepository.GetByIdAsync(uploadResponse.DocumentId);
-            if (doc is null) return StatusCode(500, "Document introuvable après création.");
-
-            try
-            {
-                await ingestionService.IngestAsync(tempPath, uploadResponse.DocumentId,
-                    new DocumentMetadata { Title = file.FileName });
-                doc.MarkAsCompleted();
-            }
-            catch (Exception ex)
-            {
-                doc.MarkAsFailed(ex.Message);
-            }
-
-            await documentRepository.UpdateAsync(doc);
-            await unitOfWork.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetById), new { id = doc.Id }, ToResponse(doc));
         }
-        finally
+        catch (DuplicateDocumentException ex)
         {
-            if (System.IO.File.Exists(tempPath))
-                System.IO.File.Delete(tempPath);
+            // Propage le type de correspondance (doublon exact ou simple conflit de nom) au front-end,
+            // converti en string pour éviter la sérialisation en entier brut (cf. CheckDuplicate ci-dessus)
+            return Conflict(new DuplicateDocumentResponse(
+                new ExistingDocumentInfo(ex.ExistingDocumentId, ex.ExistingFileName, ex.ExistingCreatedAt),
+                ex.MatchType.ToString()));
         }
+
+        // Orchestration de l'ingestion (parsing → chunking → embedding → statut final) déléguée au handler,
+        // qui gère aussi la journalisation et le message d'erreur générique en cas d'échec.
+        await sender.Send(new IngestDocumentCommand
+        {
+            DocumentId = uploadResponse.DocumentId,
+            FilePath = tempFile.Path,
+            DocumentMetadata = new DocumentMetadata { Title = file.FileName }
+        });
+
+        var doc = await documentRepository.GetByIdAsync(uploadResponse.DocumentId);
+        if (doc is null) return StatusCode(500, "Document introuvable après création.");
+
+        return CreatedAtAction(nameof(GetById), new { id = doc.Id }, ToResponse(doc));
     }
 
     [HttpDelete("{id:guid}")]

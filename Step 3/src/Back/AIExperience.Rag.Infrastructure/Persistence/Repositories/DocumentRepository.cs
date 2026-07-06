@@ -67,4 +67,11 @@ public sealed class DocumentRepository(AppDbContext context) : IDocumentReposito
         if (document is not null)
             context.Documents.Remove(document);
     }
+
+    /// <inheritdoc/>
+    public async Task<Document?> GetLatestByFileNameAsync(string userId, string fileName, CancellationToken ct = default)
+        => await context.Documents
+            .Where(d => d.UserId == userId && d.FileName == fileName)
+            .OrderByDescending(d => d.CreatedAt)
+            .FirstOrDefaultAsync(ct);
 }

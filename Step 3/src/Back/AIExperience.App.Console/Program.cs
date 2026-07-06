@@ -100,7 +100,8 @@ async Task IngestDocumentsAsync()
                 FileSizeBytes = fileInfo.Length,
                 UserId = UserId,
                 DocumentMetadata = new DocumentMetadata { Title = fileInfo.Name },
-                ChunkingStrategy = ChunkingStrategy.Recursive
+                ChunkingStrategy = ChunkingStrategy.Recursive,
+                FilePath = filePath
             });
 
             if (uploadDocumentResponse.Status == IngestionStatus.Completed)
@@ -223,6 +224,3 @@ string GetContentTypeOfFileName(string name)
         contentType = "application/octet-stream";
     return contentType;
 }
-
-
-

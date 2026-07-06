@@ -21,6 +21,9 @@ public class Document
     /// <summary>Taille du fichier en octets.</summary>
     public long FileSizeBytes { get; private set; }
 
+    /// <summary>Empreinte SHA-256 (hex, 64 caractères) du contenu du fichier, utilisée pour la détection de doublon.</summary>
+    public string ContentHash { get; private set; } = string.Empty;
+
     /// <summary>Identifiant de l'utilisateur propriétaire du document.</summary>
     public string UserId { get; private set; } = string.Empty;
 
@@ -59,13 +62,15 @@ public class Document
     /// <param name="userId">Identifiant de l'utilisateur propriétaire.</param>
     /// <param name="metadata">Métadonnées enrichies du document.</param>
     /// <param name="chunkingStrategy">Stratégie de découpage à appliquer lors de l'ingestion.</param>
+    /// <param name="contentHash">Empreinte SHA-256 du contenu du fichier (détection de doublon).</param>
     public static Document Create(
         string fileName,
         string contentType,
         long fileSizeBytes,
         string userId,
         DocumentMetadata metadata,
-        ChunkingStrategy chunkingStrategy = ChunkingStrategy.Recursive)
+        ChunkingStrategy chunkingStrategy = ChunkingStrategy.Recursive,
+        string contentHash = "")
     {
         return new Document
         {
@@ -74,7 +79,8 @@ public class Document
             FileSizeBytes = fileSizeBytes,
             UserId = userId,
             Metadata = metadata,
-            ChunkingStrategy = chunkingStrategy
+            ChunkingStrategy = chunkingStrategy,
+            ContentHash = contentHash
         };
     }
 
