@@ -55,6 +55,26 @@ public interface IIngestionService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Ingère un fichier vidéo ou audio en un seul pipeline cohérent : extraction audio (si vidéo)
+    /// → transcription Whisper → chunking temporel (<see cref="ITemporalChunker"/>) → embedding →
+    /// stockage pgvector. Point d'entrée unique quel que soit le point d'upload (documents ou
+    /// vidéo), pour ne plus dépendre du chemin d'entrée pour la qualité d'ingestion (timestamps,
+    /// langue paramétrable).
+    /// </summary>
+    /// <param name="filePath">Chemin du fichier vidéo ou audio.</param>
+    /// <param name="documentId">Identifiant du document déjà créé en base.</param>
+    /// <param name="metadata">Métadonnées du document ; le champ <c>Language</c> transmis est
+    /// remplacé par la langue effective retournée par la transcription.</param>
+    /// <param name="language">Code langue ISO à utiliser pour guider la transcription Whisper (ex. "fr").</param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    Task IngestVideoOrAudioAsync(
+        string filePath,
+        Guid documentId,
+        DocumentMetadata metadata,
+        string language,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Supprime tous les chunks et vecteurs associés à un document de pgvector.
     /// </summary>
     /// <param name="documentId">Identifiant du document à supprimer.</param>

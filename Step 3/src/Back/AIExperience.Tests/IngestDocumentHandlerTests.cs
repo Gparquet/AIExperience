@@ -84,6 +84,12 @@ public sealed class IngestDocumentHandlerTests
             Guid documentId, DocumentMetadata metadata, CancellationToken ct = default)
             => Task.CompletedTask;
 
+        // I-22 : stub ajouté pour respecter le contrat IIngestionService après l'ajout de IngestVideoOrAudioAsync.
+        // Aucun test de cette classe n'utilise un chemin vidéo/audio, donc jamais réellement invoqué ici.
+        public Task IngestVideoOrAudioAsync(string filePath, Guid documentId, DocumentMetadata metadata,
+            string language, CancellationToken ct = default)
+            => exceptionToThrow is null ? Task.CompletedTask : Task.FromException(exceptionToThrow);
+
         public Task DeleteAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
     }
 

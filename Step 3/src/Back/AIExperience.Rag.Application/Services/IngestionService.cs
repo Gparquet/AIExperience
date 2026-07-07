@@ -2,6 +2,7 @@ using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
+using AIExperience.Rag.Domain.Interfaces.Services.Video;
 using AIExperience.Rag.Domain.Models.Video;
 
 namespace AIExperience.Rag.Application.Services;
@@ -18,7 +19,9 @@ public sealed class IngestionService(
     IVectorStoreService vectorStoreService,
     ITemporalChunker temporalChunker,
     ITextChunker textChunker,
-    ILanguageDetectionService languageDetectionService) : IIngestionService
+    ILanguageDetectionService languageDetectionService,
+    IVideoProcessorService videoProcessorService,
+    ITranscriptionService transcriptionService) : IIngestionService
 {
     /// <inheritdoc/>
     public async Task IngestAsync(
@@ -157,6 +160,50 @@ public sealed class IngestionService(
         }).ToList<(DocumentChunk, float[], string)>();
 
         await vectorStoreService.UpsertBatchAsync(items, ct);
+    }
+
+    /// <summary>Extensions vidéo nécessitant une extraction audio FFmpeg préalable.</summary>
+    private static readonly string[] VideoExtensions =
+        [".mp4", ".mkv", ".webm", ".avi", ".mov"];
+
+    /// <inheritdoc/>
+    public async Task IngestVideoOrAudioAsync(
+        string filePath,
+        Guid documentId,
+        DocumentMetadata metadata,
+        string language,
+        CancellationToken ct = default)
+    {
+        var isVideo = VideoExtensions.Contains(Path.GetExtension(filePath).ToLowerInvariant());
+        var tempAudioPath = isVideo ? Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.wav") : null;
+
+        try
+        {
+            // 1. Extraction audio (uniquement pour les fichiers vidéo — les fichiers audio purs sont utilisés tels quels).
+            var audioPath = isVideo
+                ? await videoProcessorService.ExtractAudioAsync(filePath, tempAudioPath!, ct)
+                : filePath;
+
+            // 2. Transcription Whisper avec langue paramétrable (corrige la langue figée "fr" de l'ancien VideoTextExtractor).
+            var result = await transcriptionService.TranscribeAsync(audioPath, language, ct);
+
+            // 3. Langue effective persistée sur le document (même logique que IngestAsync pour I-6).
+            var document = await documentRepository.GetByIdAsync(documentId, ct);
+            if (document is not null)
+            {
+                document.SetDetectedLanguage(result.Language);
+                await documentRepository.UpdateAsync(document, ct);
+            }
+
+            // 4. Chunking temporel + embedding + stockage : réutilise le pipeline segments existant,
+            // qui préserve StartTime/EndTime par chunk (contrairement à l'ancien chemin CompositeTextExtractor).
+            await IngestFromSegmentsAsync(result.Segments, documentId, metadata with { Language = result.Language }, ct);
+        }
+        finally
+        {
+            if (tempAudioPath is not null && File.Exists(tempAudioPath))
+                File.Delete(tempAudioPath);
+        }
     }
 
     /// <inheritdoc/>

@@ -17,4 +17,7 @@ public sealed record IngestDocumentCommand : IRequest<IngestDocumentResponse>
 
     /// <summary>Métadonnées du document, transmises au pipeline d'ingestion.</summary>
     public required DocumentMetadata DocumentMetadata { get; init; }
+
+    /// <summary>Code langue ISO pour guider la transcription Whisper si le fichier est une vidéo/audio (défaut "fr").</summary>
+    public string Language { get; init; } = "fr";
 }

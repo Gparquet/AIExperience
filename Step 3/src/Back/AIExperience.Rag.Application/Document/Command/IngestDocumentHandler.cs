@@ -17,6 +17,10 @@ public sealed class IngestDocumentHandler(
     IUnitOfWork unitOfWork,
     ILogger<IngestDocumentHandler> logger) : IRequestHandler<IngestDocumentCommand, IngestDocumentResponse>
 {
+    /// <summary>Extensions vidéo/audio routées vers le pipeline segments (I-22) plutôt que vers l'extraction texte générique.</summary>
+    private static readonly string[] VideoOrAudioExtensions =
+        [".mp4", ".mkv", ".webm", ".avi", ".mov", ".wav", ".mp3", ".m4a", ".ogg", ".flac"];
+
     public async Task<IngestDocumentResponse> Handle(IngestDocumentCommand request, CancellationToken cancellationToken)
     {
         var document = await documentRepository.GetByIdAsync(request.DocumentId, cancellationToken)
@@ -24,7 +28,17 @@ public sealed class IngestDocumentHandler(
 
         try
         {
-            await ingestionService.IngestAsync(request.FilePath, request.DocumentId, request.DocumentMetadata, ct: cancellationToken);
+            var extension = Path.GetExtension(request.FilePath).ToLowerInvariant();
+            if (VideoOrAudioExtensions.Contains(extension))
+            {
+                // I-22 : un seul pipeline vidéo/audio, identique à POST /api/video/transcribe (timestamps, langue paramétrable).
+                await ingestionService.IngestVideoOrAudioAsync(
+                    request.FilePath, request.DocumentId, request.DocumentMetadata, request.Language, cancellationToken);
+            }
+            else
+            {
+                await ingestionService.IngestAsync(request.FilePath, request.DocumentId, request.DocumentMetadata, ct: cancellationToken);
+            }
             document.MarkAsCompleted();
         }
         catch (OperationCanceledException)

@@ -15,9 +15,9 @@ public interface ITemporalChunker
     /// Chaque chunk contient les timestamps de début et de fin de ses segments.
     /// </summary>
     /// <param name="segments">Liste ordonnée de segments Whisper.</param>
-    /// <param name="maxCharsPerChunk">Taille maximale en caractères par chunk (défaut : 800).</param>
+    /// <param name="maxCharsPerChunk">Taille maximale en caractères par chunk (défaut : 1400).</param>
     /// <returns>Liste ordonnée de chunks avec timestamps.</returns>
     IReadOnlyList<TextChunk> ChunkSegments(
         IReadOnlyList<TranscriptionSegment> segments,
-        int maxCharsPerChunk = 800);
+        int maxCharsPerChunk = 1400);
 }

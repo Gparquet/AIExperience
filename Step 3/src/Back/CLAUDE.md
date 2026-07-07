@@ -109,8 +109,8 @@ POST /api/video/transcribe
   │     → Retourne texte propre
   │
   └─ 4. IngestionService.IngestFromSegmentsAsync()
-        → TemporalChunker : accumule segments jusqu'à 800 chars
-        → Format : [HH:MM:SS → HH:MM:SS] texte du segment
+        → TemporalChunker : accumule segments jusqu'à ~1400 chars
+        → Contenu brut + timestamps dans StartTime / EndTime
         → Embedding batch (OpenAI / Ollama)
         → Upsert pgvector (StartTime / EndTime persistés)
   ↓
@@ -178,15 +178,10 @@ record TranscriptionSegment(
 ### Couche Application — Nouveaux services Step 3
 
 **`TemporalChunker`** — Implémentation de `ITemporalChunker`
-- Accumule les segments Whisper jusqu'à `maxCharsPerChunk` (800 par défaut)
-- Chaque ligne : `[HH:MM:SS → HH:MM:SS] texte`
+- Accumule les segments Whisper jusqu'à ~1400 chars (cible par défaut)
+- Contenu texte brut ; timestamps stockés dans les propriétés `StartTime` / `EndTime`
 - Respecte les frontières des segments (jamais de coupure en milieu de phrase)
-
-**`VideoTextExtractor`** — Extracteur vidéo/audio
-- Implémente `ITextExtractor`
-- S'intègre dans `CompositeTextExtractor`
-- Permet d'uploader une vidéo via `POST /api/documents` sans code client spécifique
-- Gère formats : `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.wav`, `.mp3`, `.m4a`, `.ogg`, `.flac`
+- Chevauche 1 segment entre chunks consécutifs et scinde les segments surdimensionnés
 
 **`IIngestionService`** — Nouvelles méthodes
 ```csharp
@@ -545,11 +540,10 @@ Ou utiliser le script `scripts/migrate-temporal-chunks.sql` fourni.
 | `src/Back/AIExperience.Rag.Infrastructure/AI/Rag/RagPipelineService.cs` | Pipeline RAG + modes Full-text/LLM direct |
 | `src/Back/AIExperience.Rag.Infrastructure/Persistence/PgVectorStoreService.cs` | Requêtes pgvector + `SearchFullTextAsync` + `UpsertBatchAsync` |
 | `src/Back/AIExperience.Rag.Application/Services/TemporalChunker.cs` | Chunking temporel des segments Whisper |
-| `src/Back/AIExperience.Rag.Application/Services/TextExtractor/VideoTextExtractor.cs` | Extracteur vidéo/audio intégré dans `CompositeTextExtractor` |
 | `src/Back/AIExperience.Rag.Application/Video/Command/TranscribeVideoCommand.cs` | Commande MediatR transcription vidéo |
 | `src/Back/AIExperience.Rag.Application/Video/Command/TranscribeVideoHandler.cs` | Orchestration pipeline vidéo complet |
 | `src/Back/AIExperience.Rag.Application/Video/Command/TranscribeVideoValidator.cs` | Validation commande transcription |
-| `src/Back/AIExperience.Rag.Application/DependencyInjection.cs` | Registration `ITemporalChunker`, `VideoTextExtractor`, handlers MediatR |
+| `src/Back/AIExperience.Rag.Application/DependencyInjection.cs` | Registration `ITemporalChunker`, text extractors, handlers MediatR |
 | `src/Back/AIExperience.Rag.Infrastructure/DependencyInjection.cs` | Registration `AddVideoTranscription()`, `WhisperTranscriptionService`, `FFmpegVideoProcessorService` |
 | `src/Back/AIExperience.Tests/TemporalChunkerTests.cs` | Tests unitaires TemporalChunker |
 | `scripts/init.sql` | Schéma PostgreSQL complet (attention : colonnes vidéo manquantes) |

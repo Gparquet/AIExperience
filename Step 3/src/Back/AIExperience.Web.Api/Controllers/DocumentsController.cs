@@ -60,7 +60,8 @@ public class DocumentsController(
     public async Task<ActionResult<DocumentResponse>> Upload(
         IFormFile file,
         [FromQuery] ChunkingStrategy strategy = ChunkingStrategy.Recursive,
-        [FromQuery] Guid? replaceDocumentId = null)
+        [FromQuery] Guid? replaceDocumentId = null,
+        [FromQuery] string language = "fr")
     {
         if (file is null || file.Length == 0)
             return BadRequest("Fichier manquant.");
@@ -98,7 +99,8 @@ public class DocumentsController(
         {
             DocumentId = uploadResponse.DocumentId,
             FilePath = tempFile.Path,
-            DocumentMetadata = new DocumentMetadata { Title = file.FileName }
+            DocumentMetadata = new DocumentMetadata { Title = file.FileName },
+            Language = language
         });
 
         var doc = await documentRepository.GetByIdAsync(uploadResponse.DocumentId);

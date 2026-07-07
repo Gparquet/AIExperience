@@ -497,7 +497,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             }
 
             // Construction du contexte documentaire depuis les chunks retenus.
-            // R-1 : on injecte DocumentName (lisible) au lieu du GUID (incompréhensible pour le LLM).
+            // On injecte DocumentName (lisible) au lieu du GUID (incompréhensible pour le LLM).
             // Le LLM peut ainsi citer correctement [SOURCE: NomDocument, p.X].
             var contextBuilder = new StringBuilder();
             foreach (var (chunk, i) in contextChunks.Select((c, i) => (c, i + 1)))
@@ -508,8 +508,13 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 var section = string.IsNullOrWhiteSpace(chunk.SectionTitle)
                     ? string.Empty
                     : $", Section: {chunk.SectionTitle}";
+                // Plage temporelle vidéo injectée dans l'en-tête (le corps du chunk reste
+                // du texte pur) — permet au LLM de citer un horodatage.
+                var time = chunk.StartTime is { } start && chunk.EndTime is { } end
+                    ? $", {start:hh\\:mm\\:ss}–{end:hh\\:mm\\:ss}"
+                    : string.Empty;
 
-                contextBuilder.AppendLine($"[Extrait {i}] Source: {source}{page}{section}");
+                contextBuilder.AppendLine($"[Extrait {i}] Source: {source}{page}{section}{time}");
                 contextBuilder.AppendLine(chunk.Content);
                 contextBuilder.AppendLine();
             }

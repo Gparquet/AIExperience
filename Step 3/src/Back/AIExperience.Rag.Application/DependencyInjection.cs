@@ -3,7 +3,6 @@ using AIExperience.Rag.Application.Services;
 using AIExperience.Rag.Application.Services.LanguageDetection;
 using AIExperience.Rag.Application.Services.TextExtractor;
 using AIExperience.Rag.Domain.Interfaces.Services;
-using AIExperience.Rag.Domain.Interfaces.Services.Video;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
@@ -65,8 +64,6 @@ namespace AIExperience.Rag.Application
             services.AddSingleton<ITextExtractor, DocxTextExtractor>();
             services.AddSingleton<ITextExtractor, PowerPointTextExtractor>();
             services.AddSingleton<ITextExtractor, ExcelTextExtractor>();
-            // VideoTextExtractor dépend de IVideoProcessorService + ITranscriptionService (Infrastructure Singletons)
-            services.AddSingleton<ITextExtractor, VideoTextExtractor>();
             services.AddSingleton<ICompositeTextExtractor, CompositeTextExtractor>();
             return services;
         }
