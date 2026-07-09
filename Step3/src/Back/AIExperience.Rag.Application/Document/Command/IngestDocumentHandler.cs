@@ -6,18 +6,20 @@ using Microsoft.Extensions.Logging;
 namespace AIExperience.Rag.Application.Document.Command;
 
 /// <summary>
-/// Handler MediatR pour <see cref="IngestDocumentCommand"/>. Exécute le pipeline d'ingestion sur un
-/// document déjà créé, puis persiste son statut final (Completed ou Failed). Un échec technique ne
-/// doit jamais fuiter de détail interne au client : seul un message générique est stocké/exposé,
-/// le détail complet (stack trace incluse) est loggé côté serveur.
+/// Handler MediatR pour <see cref="IngestDocumentCommand"/>, invoqué par le worker d'ingestion en
+/// arrière-plan. Exécute le pipeline d'ingestion sur un document déjà créé, en passant par le
+/// statut "en cours de traitement" avant de s'y attaquer — pour qu'un client qui interroge le
+/// document pendant ce temps voie un état cohérent plutôt qu'un statut figé sur "en attente". Un
+/// échec technique ne doit jamais fuiter de détail interne au client : seul un message générique
+/// est stocké/exposé, le détail complet (stack trace incluse) est loggé côté serveur.
 /// </summary>
 public sealed class IngestDocumentHandler(
     IIngestionService ingestionService,
     IDocumentRepository documentRepository,
-    IUnitOfWork unitOfWork,
+    DocumentIngestionStatusUpdater statusUpdater,
     ILogger<IngestDocumentHandler> logger) : IRequestHandler<IngestDocumentCommand, IngestDocumentResponse>
 {
-    /// <summary>Extensions vidéo/audio routées vers le pipeline segments (I-22) plutôt que vers l'extraction texte générique.</summary>
+    /// <summary>Extensions vidéo/audio routées vers le pipeline segments plutôt que vers l'extraction texte générique.</summary>
     private static readonly string[] VideoOrAudioExtensions =
         [".mp4", ".mkv", ".webm", ".avi", ".mov", ".wav", ".mp3", ".m4a", ".ogg", ".flac"];
 
@@ -26,40 +28,51 @@ public sealed class IngestDocumentHandler(
         var document = await documentRepository.GetByIdAsync(request.DocumentId, cancellationToken)
             ?? throw new InvalidOperationException($"Document introuvable après création : {request.DocumentId}");
 
+        var filePath = document.FileReference
+            ?? throw new InvalidOperationException($"Document sans fichier de travail référencé : {document.Id}");
+
+        await statusUpdater.MarkProcessingAsync(document, cancellationToken);
+
         try
         {
-            var extension = Path.GetExtension(request.FilePath).ToLowerInvariant();
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
             if (VideoOrAudioExtensions.Contains(extension))
             {
-                // I-22 : un seul pipeline vidéo/audio, identique à POST /api/video/transcribe (timestamps, langue paramétrable).
+                // Un seul pipeline vidéo/audio, identique quel que soit le point d'upload d'origine.
                 await ingestionService.IngestVideoOrAudioAsync(
-                    request.FilePath, request.DocumentId, request.DocumentMetadata, request.Language, cancellationToken);
+                    filePath, document.Id, document.Metadata, document.Metadata.Language, cancellationToken);
             }
             else
             {
-                await ingestionService.IngestAsync(request.FilePath, request.DocumentId, request.DocumentMetadata, ct: cancellationToken);
+                await ingestionService.IngestAsync(filePath, document.Id, document.Metadata, ct: cancellationToken);
             }
-            document.MarkAsCompleted();
+
+            await statusUpdater.MarkCompletedAsync(document, cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            // Annulation explicite (client déconnecté, timeout) : ce n'est pas un échec d'ingestion,
-            // on laisse l'exception se propager au lieu de marquer le document en erreur.
+            // Annulation explicite (arrêt du worker, timeout) : ce n'est pas un échec d'ingestion,
+            // on laisse l'exception se propager sans marquer le document en erreur ni supprimer le
+            // fichier de travail — il sera repris au prochain tour de sonde puisque le message
+            // outbox correspondant reste non traité.
             throw;
         }
         catch (Exception ex)
         {
             // Trace technique complète (stack trace) côté serveur uniquement, pour le diagnostic.
             logger.LogError(ex, "Échec de l'ingestion du document {DocumentId} ({FilePath})",
-                request.DocumentId, request.FilePath);
+                document.Id, filePath);
 
             // Message générique exposé via l'API : évite de fuiter des détails internes
             // (chemins de fichiers temporaires, message brut Npgsql, etc.) au client.
-            document.MarkAsFailed("L'ingestion du document a échoué. Consultez les journaux serveur pour le détail.");
+            await statusUpdater.MarkFailedAsync(document,
+                "L'ingestion du document a échoué. Consultez les journaux serveur pour le détail.", cancellationToken);
         }
 
-        await documentRepository.UpdateAsync(document, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        // Le fichier de travail n'a plus lieu d'être une fois le document arrivé dans un état
+        // final (succès ou échec) — il ne sert qu'à alimenter une tentative d'ingestion.
+        if (File.Exists(filePath))
+            File.Delete(filePath);
 
         return new IngestDocumentResponse
         {

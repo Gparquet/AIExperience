@@ -146,7 +146,7 @@ public sealed class IngestionService(
                 $"pour {textChunks.Count} chunks (IngestFromSegmentsAsync, document {documentId}).");
 
         // Stockage batch : 1 transaction pour tous les chunks (vs N commits auto-isolés)
-        // Langue déjà connue via Whisper (metadata.Language peuplé par TranscribeVideoHandler).
+        // Langue déjà connue via Whisper (portée par les métadonnées transmises à l'appel).
         var items = textChunks.Select((tc, i) =>
         {
             var chunk = DocumentChunk.Create(

@@ -1,23 +1,16 @@
-using AIExperience.Rag.Domain.Enums;
 using MediatR;
 
 namespace AIExperience.Rag.Application.Document.Command;
 
 /// <summary>
-/// Commande orchestrant l'ingestion (parsing → chunking → embedding → stockage pgvector) d'un document
-/// déjà créé en base via <see cref="UploadDocumentCommand"/>, ainsi que la mise à jour de son statut final.
+/// Commande orchestrant l'ingestion (parsing → chunking → embedding → stockage pgvector) d'un
+/// document déjà créé en base via <see cref="UploadDocumentCommand"/>. Ne transporte que
+/// l'identifiant : tout le reste (chemin du fichier, métadonnées, langue) est relu depuis la
+/// ligne <c>Document</c> au moment de l'exécution — ce qui permet de rejouer exactement le même
+/// traitement, que la commande soit envoyée juste après l'upload ou reprise après un redémarrage.
 /// </summary>
 public sealed record IngestDocumentCommand : IRequest<IngestDocumentResponse>
 {
     /// <summary>Identifiant du document déjà créé en base de données.</summary>
     public required Guid DocumentId { get; init; }
-
-    /// <summary>Chemin du fichier temporaire à ingérer.</summary>
-    public required string FilePath { get; init; }
-
-    /// <summary>Métadonnées du document, transmises au pipeline d'ingestion.</summary>
-    public required DocumentMetadata DocumentMetadata { get; init; }
-
-    /// <summary>Code langue ISO pour guider la transcription Whisper si le fichier est une vidéo/audio (défaut "fr").</summary>
-    public string Language { get; init; } = "fr";
 }

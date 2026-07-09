@@ -1,4 +1,6 @@
 using AIExperience.Rag.Application.Common.Behaviors;
+using AIExperience.Rag.Application.Document.Command;
+using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Application.Services;
 using AIExperience.Rag.Application.Services.LanguageDetection;
 using AIExperience.Rag.Application.Services.TextExtractor;
@@ -23,7 +25,8 @@ namespace AIExperience.Rag.Application
                      .AddTextExtractors()
                      .AddLanguageDetection()
                      .AddIngestion()
-                     .AddFileHashing();
+                     .AddFileHashing()
+                     .AddIngestionWorker();
         }
 
         public static IServiceCollection ConfigureMediatR(this IServiceCollection services)
@@ -52,6 +55,7 @@ namespace AIExperience.Rag.Application
 
         public static IServiceCollection AddIngestion(this IServiceCollection services)
         {
+            services.AddScoped<DocumentIngestionStatusUpdater>();
             return services.AddScoped<IIngestionService, IngestionService>();
         }
 
@@ -80,6 +84,13 @@ namespace AIExperience.Rag.Application
         {
             // Singleton : sans état, réutilisable en concurrence (même pattern que TemporalChunker).
             services.AddSingleton<IFileHashService, FileHashService>();
+            return services;
+        }
+
+        /// <summary>Enregistre le worker qui consomme la file d'ingestion en arrière-plan.</summary>
+        public static IServiceCollection AddIngestionWorker(this IServiceCollection services)
+        {
+            services.AddHostedService<IngestionWorker>();
             return services;
         }
     }

@@ -21,6 +21,10 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.UserId).HasColumnName("user_id").HasMaxLength(255).IsRequired();
         builder.Property(d => d.FileReference).HasColumnName("file_reference").HasMaxLength(500);
         builder.Property(d => d.ErrorMessage).HasColumnName("error_message").HasMaxLength(2000);
+        builder.Property(d => d.RawTranscription).HasColumnName("raw_transcription");
+        builder.Property(d => d.CleanedTranscription).HasColumnName("cleaned_transcription");
+        builder.Property(d => d.IndexInRag).HasColumnName("index_in_rag");
+        builder.Property(d => d.CleanTranscriptionWithLlm).HasColumnName("clean_transcription_with_llm");
         builder.Property(d => d.Status).HasColumnName("status").HasConversion<string>();
         builder.Property(d => d.ChunkingStrategy).HasColumnName("chunking_strategy").HasConversion<string>();
         builder.Property(d => d.CreatedAt).HasColumnName("created_at");
