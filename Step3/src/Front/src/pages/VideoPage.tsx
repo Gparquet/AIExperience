@@ -1,50 +1,75 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import type { TranscribeVideoResponse } from '../types';
+import { useIngestionNotifications } from '../context/IngestionNotificationsContext';
+import type { DocumentResponse, DocumentStatus, VideoTranscriptionResponse } from '../types';
 
 const ACCEPTED_EXTENSIONS = '.mp4,.mkv,.webm,.avi,.mov,.wav,.mp3,.m4a';
+
+const statusLabel: Record<DocumentStatus, string> = {
+  Pending: 'En file d’attente…',
+  Processing: 'Transcription en cours…',
+  Completed: 'Terminé',
+  Failed: 'Échec',
+};
 
 export default function VideoPage() {
   const [file, setFile] = useState<File | null>(null);
   const [language, setLanguage] = useState('fr');
   const [cleanWithLlm, setCleanWithLlm] = useState(true);
   const [autoIngest, setAutoIngest] = useState(true);
-  const [processing, setProcessing] = useState(false);
-  const [result, setResult] = useState<TranscribeVideoResponse | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [videoDocument, setVideoDocument] = useState<DocumentResponse | null>(null);
+  const [transcription, setTranscription] = useState<VideoTranscriptionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rawExpanded, setRawExpanded] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const { registerPendingDocument, subscribe } = useIngestionNotifications();
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
     setFile(f);
-    setResult(null);
+    setVideoDocument(null);
+    setTranscription(null);
     setError(null);
   }
+
+  // Suit le document créé jusqu'à son état final ; ne recharge la transcription qu'une fois
+  // "Completed" — avant cela, RawTranscription/CleanedTranscription sont encore vides côté back-end.
+  useEffect(() => subscribe(event => {
+    setVideoDocument(prev => {
+      if (!prev || prev.id !== event.documentId) return prev;
+      return { ...prev, status: event.status, errorMessage: event.errorMessage };
+    });
+
+    if (event.documentId === videoDocument?.id && event.status === 'Completed') {
+      api.video.getTranscription(event.documentId).then(setTranscription).catch(() => {});
+    }
+  }), [subscribe, videoDocument?.id]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!file) return;
 
-    setProcessing(true);
+    setUploading(true);
+    setUploadProgress(0);
     setError(null);
-    setResult(null);
+    setVideoDocument(null);
+    setTranscription(null);
 
     try {
-      const response = await api.video.transcribe(file, language, cleanWithLlm, autoIngest);
-      setResult(response);
+      // 202 Accepted : seul le transfert du fichier est attendu ici — l'extraction audio, la
+      // transcription Whisper et le nettoyage LLM éventuel se déroulent en arrière-plan.
+      const created = await api.video.transcribe(file, language, cleanWithLlm, autoIngest, undefined, setUploadProgress);
+      setVideoDocument(created);
+      registerPendingDocument(created.id, created.fileName);
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setProcessing(false);
+      setUploading(false);
     }
-  }
-
-  function formatDuration(ts: string): string {
-    // TimeSpan sérialisé "hh:mm:ss.fffffff" — on garde hh:mm:ss
-    return ts.split('.')[0];
   }
 
   return (
@@ -62,7 +87,7 @@ export default function VideoPage() {
             accept={ACCEPTED_EXTENSIONS}
             hidden
             onChange={handleFileChange}
-            disabled={processing}
+            disabled={uploading}
           />
           {file ? (
             <div className="video-file-selected">
@@ -90,7 +115,7 @@ export default function VideoPage() {
             <select
               value={language}
               onChange={e => setLanguage(e.target.value)}
-              disabled={processing}
+              disabled={uploading}
             >
               <option value="fr">Français</option>
               <option value="en">Anglais</option>
@@ -104,7 +129,7 @@ export default function VideoPage() {
               type="checkbox"
               checked={cleanWithLlm}
               onChange={e => setCleanWithLlm(e.target.checked)}
-              disabled={processing}
+              disabled={uploading}
             />
             <span>Nettoyer via LLM (supprime hésitations, structure en paragraphes)</span>
           </label>
@@ -114,7 +139,7 @@ export default function VideoPage() {
               type="checkbox"
               checked={autoIngest}
               onChange={e => setAutoIngest(e.target.checked)}
-              disabled={processing}
+              disabled={uploading}
             />
             <span>Indexer dans le RAG (rend le contenu interrogeable)</span>
           </label>
@@ -122,49 +147,50 @@ export default function VideoPage() {
 
         <button
           type="submit"
-          className={`btn btn-primary ${(!file || processing) ? 'btn-disabled' : ''}`}
-          disabled={!file || processing}
+          className={`btn btn-primary ${(!file || uploading) ? 'btn-disabled' : ''}`}
+          disabled={!file || uploading}
         >
-          {processing && <span className="btn-spinner" />}
-          {processing ? 'Transcription en cours…' : 'Transcrire'}
+          {uploading && <span className="btn-spinner" />}
+          {uploading ? 'Envoi…' : 'Transcrire'}
         </button>
       </form>
 
-      {/* Message d'attente */}
-      {processing && (
+      {/* Progression de l'envoi du fichier (seule étape réellement suivie en pourcentage — la
+          transcription elle-même se déroule hors requête, son avancement fin n'est pas exposé). */}
+      {uploading && (
         <div className="upload-progress">
           <div className="spinner" />
-          Extraction audio et transcription Whisper en cours — cela peut prendre quelques instants…
+          <div style={{ flex: 1 }}>
+            <div>Envoi du fichier — {uploadProgress}%</div>
+            <div className="progress-bar">
+              <div className="progress-bar-fill" style={{ width: `${uploadProgress}%` }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Statut du traitement en arrière-plan, une fois le fichier envoyé */}
+      {videoDocument && (videoDocument.status === 'Pending' || videoDocument.status === 'Processing') && (
+        <div className="upload-progress">
+          <div className="spinner" />
+          {statusLabel[videoDocument.status]} Vous pouvez continuer à naviguer, une notification vous préviendra.
         </div>
       )}
 
       {/* Erreur */}
       {error && <div className="alert alert-error">{error}</div>}
+      {videoDocument?.status === 'Failed' && (
+        <div className="alert alert-error">{videoDocument.errorMessage ?? 'La transcription a échoué.'}</div>
+      )}
 
       {/* Résultat */}
-      {result && (
+      {videoDocument?.status === 'Completed' && transcription && (
         <div className="video-result">
-          {/* Statistiques */}
-          <div className="video-stats">
-            <div className="video-stat">
-              <span className="video-stat-label">Durée</span>
-              <span className="video-stat-value">{formatDuration(result.duration)}</span>
-            </div>
-            <div className="video-stat">
-              <span className="video-stat-label">Segments</span>
-              <span className="video-stat-value">{result.segmentCount}</span>
-            </div>
-            <div className="video-stat">
-              <span className="video-stat-label">Traitement</span>
-              <span className="video-stat-value">{formatDuration(result.processingTime)}</span>
-            </div>
-          </div>
-
           {/* Transcription nettoyée (prioritaire) */}
-          {result.cleanedTranscription && (
+          {transcription.cleanedTranscription && (
             <div className="video-transcription">
               <h3>Transcription nettoyée</h3>
-              <pre className="video-transcription-text">{result.cleanedTranscription}</pre>
+              <pre className="video-transcription-text">{transcription.cleanedTranscription}</pre>
             </div>
           )}
 
@@ -174,21 +200,21 @@ export default function VideoPage() {
               className="video-expand-btn"
               onClick={() => setRawExpanded(v => !v)}
             >
-              {rawExpanded ? '▲' : '▼'} Transcription brute avec timestamps
+              {rawExpanded ? '▲' : '▼'} Transcription brute
             </button>
             {rawExpanded && (
               <pre className="video-transcription-text video-transcription-raw">
-                {result.rawTranscription}
+                {transcription.rawTranscription}
               </pre>
             )}
           </div>
 
           {/* Bouton vers le chat */}
-          {result.documentId && (
+          {autoIngest && (
             <div className="video-actions">
               <button
                 className="btn btn-primary"
-                onClick={() => navigate('/chat', { state: { documentId: result.documentId } })}
+                onClick={() => navigate('/chat', { state: { documentId: videoDocument.id } })}
               >
                 Interroger ce document dans le Chat →
               </button>

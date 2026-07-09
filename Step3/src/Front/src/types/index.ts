@@ -1,10 +1,22 @@
+/** Statuts possibles d'un document dans le pipeline d'ingestion. */
+export type DocumentStatus = 'Pending' | 'Processing' | 'Completed' | 'Failed';
+
 export interface DocumentResponse {
   id: string;
   fileName: string;
   contentType: string;
   fileSizeBytes: number;
-  status: string;
+  status: DocumentStatus;
   createdAt: string;
+  /** Raison de l'échec si le statut est "Failed", absente sinon. */
+  errorMessage?: string | null;
+}
+
+/** Événement poussé par le hub SignalR à chaque changement de statut d'un document. */
+export interface DocumentStatusChangedEvent {
+  documentId: string;
+  status: DocumentStatus;
+  errorMessage: string | null;
 }
 
 /** Type de correspondance détecté avec un document existant de même nom. */
@@ -65,17 +77,12 @@ export type StreamEvent =
   | { event: 'done'; data: AskQuestionResponse }
   | { event: 'error'; data: { message: string } };
 
-export interface TranscribeVideoResponse {
-  /** Transcription brute avec timestamps [hh:mm:ss → hh:mm:ss] */
-  rawTranscription: string;
-  /** Transcription nettoyée par le LLM (si demandée) */
+/**
+ * Transcription d'un document vidéo/audio, récupérée après coup une fois le document "Completed"
+ * (la transcription elle-même n'est plus renvoyée en synchrone par l'upload, qui est maintenant
+ * traité en arrière-plan).
+ */
+export interface VideoTranscriptionResponse {
+  rawTranscription: string | null;
   cleanedTranscription: string | null;
-  /** Durée totale de la vidéo/audio (ex: "00:05:42.1234") */
-  duration: string;
-  /** Nombre de segments transcrits */
-  segmentCount: number;
-  /** ID du document créé dans le RAG (si autoIngest = true) */
-  documentId: string | null;
-  /** Temps de traitement total (ex: "00:01:23.4567") */
-  processingTime: string;
 }
