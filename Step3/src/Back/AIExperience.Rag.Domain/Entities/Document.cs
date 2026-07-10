@@ -42,6 +42,18 @@ public class Document
     /// <summary>Message d'erreur en cas d'échec de l'ingestion.</summary>
     public string? ErrorMessage { get; private set; }
 
+    /// <summary>Transcription brute produite par Whisper (documents vidéo/audio uniquement) ; conservée pour être consultée après coup, une fois le traitement terminé.</summary>
+    public string? RawTranscription { get; private set; }
+
+    /// <summary>Version de la transcription nettoyée par le LLM local, si l'utilisateur a activé cette option lors de l'import ; absente sinon.</summary>
+    public string? CleanedTranscription { get; private set; }
+
+    /// <summary>Si vrai (défaut), le contenu est chunké/embeddé et devient interrogeable dans le RAG. À faux pour une simple transcription à la demande, sans indexation.</summary>
+    public bool IndexInRag { get; private set; } = true;
+
+    /// <summary>Demande, pour un document vidéo/audio, que la transcription brute soit également nettoyée par le LLM local pour l'affichage (n'affecte pas le texte réellement indexé).</summary>
+    public bool CleanTranscriptionWithLlm { get; private set; }
+
     /// <summary>Date et heure de création du document (UTC).</summary>
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
 
@@ -63,6 +75,13 @@ public class Document
     /// <param name="metadata">Métadonnées enrichies du document.</param>
     /// <param name="chunkingStrategy">Stratégie de découpage à appliquer lors de l'ingestion.</param>
     /// <param name="contentHash">Empreinte SHA-256 du contenu du fichier (détection de doublon).</param>
+    /// <param name="id">
+    /// Identifiant à imposer au document, si l'appelant doit le connaître avant même l'insertion
+    /// en base (par exemple pour nommer un fichier de travail sur disque avant de créer la ligne
+    /// correspondante). Laissé à <c>null</c>, un nouvel identifiant est généré normalement.
+    /// </param>
+    /// <param name="indexInRag">Si faux, le document ne sera pas chunké/embeddé (simple transcription à la demande, sans indexation).</param>
+    /// <param name="cleanTranscriptionWithLlm">Pour un document vidéo/audio, demande le nettoyage LLM de la transcription pour l'affichage.</param>
     public static Document Create(
         string fileName,
         string contentType,
@@ -70,9 +89,12 @@ public class Document
         string userId,
         DocumentMetadata metadata,
         ChunkingStrategy chunkingStrategy = ChunkingStrategy.Recursive,
-        string contentHash = "")
+        string contentHash = "",
+        Guid? id = null,
+        bool indexInRag = true,
+        bool cleanTranscriptionWithLlm = false)
     {
-        return new Document
+        var document = new Document
         {
             FileName = fileName,
             ContentType = contentType,
@@ -80,8 +102,15 @@ public class Document
             UserId = userId,
             Metadata = metadata,
             ChunkingStrategy = chunkingStrategy,
-            ContentHash = contentHash
+            ContentHash = contentHash,
+            IndexInRag = indexInRag,
+            CleanTranscriptionWithLlm = cleanTranscriptionWithLlm
         };
+
+        if (id is not null)
+            document.Id = id.Value;
+
+        return document;
     }
 
     /// <summary>
@@ -146,4 +175,16 @@ public class Document
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
+    /// <summary>
+    /// Enregistre le texte transcrit une fois la transcription terminée, pour qu'il reste
+    /// consultable a posteriori même si la réponse HTTP initiale n'attend pas la fin du traitement.
+    /// </summary>
+    /// <param name="rawTranscription">Texte brut produit par la transcription.</param>
+    /// <param name="cleanedTranscription">Version nettoyée par le LLM, ou <c>null</c> si l'option n'a pas été demandée.</param>
+    public void SetTranscription(string rawTranscription, string? cleanedTranscription)
+    {
+        RawTranscription = rawTranscription;
+        CleanedTranscription = cleanedTranscription;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
 }

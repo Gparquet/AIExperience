@@ -1,5 +1,6 @@
 using AIExperience.Rag.Application.Document.Command;
 using AIExperience.Rag.Application.Document.Exceptions;
+using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Web.Api.DTOs;
@@ -7,6 +8,7 @@ using AIExperience.Web.Api.Helpers;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Options;
 
 namespace AIExperience.Web.Api.Controllers;
 
@@ -14,7 +16,9 @@ namespace AIExperience.Web.Api.Controllers;
 [Route("api/[controller]")]
 public class DocumentsController(
     ISender sender,
-    IDocumentRepository documentRepository) : ControllerBase
+    IDocumentRepository documentRepository,
+    IngestionSignal ingestionSignal,
+    IOptions<IngestionOptions> ingestionOptions) : ControllerBase
 {
     private const string DefaultUserId = "1ea95468-3f27-4a6d-8fb3-25fdd1530023";
 
@@ -56,36 +60,50 @@ public class DocumentsController(
             true, new ExistingDocumentInfo(existing.Id, existing.FileName, existing.CreatedAt), matchType.ToString()));
     }
 
+    /// <summary>
+    /// Reçoit le fichier, le persiste dans le répertoire de travail et met l'ingestion en file —
+    /// le traitement lui-même (parsing/chunking/embedding, potentiellement long) se déroule hors
+    /// requête, dans le worker d'ingestion. La réponse arrive dès que le document est créé, avec
+    /// un statut encore "Pending" ; le front est notifié de la suite via SignalR ou le polling.
+    /// </summary>
     [HttpPost]
     public async Task<ActionResult<DocumentResponse>> Upload(
         IFormFile file,
         [FromQuery] ChunkingStrategy strategy = ChunkingStrategy.Recursive,
         [FromQuery] Guid? replaceDocumentId = null,
-        [FromQuery] string language = "fr")
+        [FromQuery] string language = "fr",
+        CancellationToken cancellationToken = default)
     {
         if (file is null || file.Length == 0)
             return BadRequest("Fichier manquant.");
 
-        // Copie le fichier uploadé dans un fichier temporaire, supprimé automatiquement à la fin du bloc
-        await using var tempFile = await TempUploadedFile.CreateAsync(file);
+        var documentId = Guid.NewGuid();
+        var filePath = await WorkFileStore.SaveAsync(file, documentId, ingestionOptions.Value.WorkDirectory, cancellationToken);
+        var contentType = GetContentType(file.FileName);
 
         UploadDocumentResponse uploadResponse;
         try
         {
             uploadResponse = await sender.Send(new UploadDocumentCommand
             {
+                Id = documentId,
                 FileName = file.FileName,
-                ContentType = GetContentType(file.FileName),
+                ContentType = contentType,
                 FileSizeBytes = file.Length,
                 UserId = DefaultUserId,
-                DocumentMetadata = new DocumentMetadata { Title = file.FileName },
+                DocumentMetadata = new DocumentMetadata { Title = file.FileName, Language = language },
                 ChunkingStrategy = strategy,
-                FilePath = tempFile.Path,
+                FilePath = filePath,
                 ReplaceDocumentId = replaceDocumentId
-            });
+            }, cancellationToken);
         }
         catch (DuplicateDocumentException ex)
         {
+            // Le document n'a finalement pas été créé : le fichier de travail fraîchement écrit
+            // n'a plus de raison d'exister.
+            if (System.IO.File.Exists(filePath))
+                System.IO.File.Delete(filePath);
+
             // Propage le type de correspondance (doublon exact ou simple conflit de nom) au front-end,
             // converti en string pour éviter la sérialisation en entier brut (cf. CheckDuplicate ci-dessus)
             return Conflict(new DuplicateDocumentResponse(
@@ -93,20 +111,15 @@ public class DocumentsController(
                 ex.MatchType.ToString()));
         }
 
-        // Orchestration de l'ingestion (parsing → chunking → embedding → statut final) déléguée au handler,
-        // qui gère aussi la journalisation et le message d'erreur générique en cas d'échec.
-        await sender.Send(new IngestDocumentCommand
-        {
-            DocumentId = uploadResponse.DocumentId,
-            FilePath = tempFile.Path,
-            DocumentMetadata = new DocumentMetadata { Title = file.FileName },
-            Language = language
-        });
+        // Réveille le worker immédiatement plutôt que de le laisser attendre le prochain tour de sonde.
+        ingestionSignal.Pulse();
 
-        var doc = await documentRepository.GetByIdAsync(uploadResponse.DocumentId);
-        if (doc is null) return StatusCode(500, "Document introuvable après création.");
-
-        return CreatedAtAction(nameof(GetById), new { id = doc.Id }, ToResponse(doc));
+        // Le handler a déjà persisté le document et renvoyé tout ce qu'il faut pour la réponse :
+        // pas besoin de requêter à nouveau le repository, ContentType/FileSizeBytes sont déjà connus
+        // côté contrôleur (calculés juste au-dessus) et ErrorMessage est forcément nul à la création.
+        return AcceptedAtAction(nameof(GetById), new { id = uploadResponse.DocumentId }, new DocumentResponse(
+            uploadResponse.DocumentId, uploadResponse.FileName, contentType, file.Length,
+            uploadResponse.Status.ToString(), uploadResponse.CreatedAt, ErrorMessage: null));
     }
 
     [HttpDelete("{id:guid}")]
@@ -129,7 +142,7 @@ public class DocumentsController(
     }
 
     private static DocumentResponse ToResponse(AIExperience.Rag.Domain.Entities.Document d) =>
-        new(d.Id, d.FileName, d.ContentType, d.FileSizeBytes, d.Status.ToString(), d.CreatedAt);
+        new(d.Id, d.FileName, d.ContentType, d.FileSizeBytes, d.Status.ToString(), d.CreatedAt, d.ErrorMessage);
 
     private static string GetContentType(string fileName)
     {

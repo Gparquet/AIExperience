@@ -1,11 +1,16 @@
 using AIExperience.Rag.Application;
+using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Rag.Infrastructure;
+using AIExperience.Web.Api.Hubs;
+using AIExperience.Web.Api.Notifications;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IIngestionNotifier, SignalRIngestionNotifier>();
 
 builder.Services
     .AddInfrastructure(builder.Configuration)
@@ -19,7 +24,9 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
         policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
-              .AllowAnyMethod()));
+              .AllowAnyMethod()
+              // Nécessaire pour le repli en long-polling de SignalR si les WebSockets sont indisponibles.
+              .AllowCredentials()));
 
 var app = builder.Build();
 
@@ -35,5 +42,6 @@ if (!app.Environment.IsDevelopment())
 
 app.UseCors();
 app.MapControllers();
+app.MapHub<IngestionHub>("/hubs/ingestion");
 
 app.Run();

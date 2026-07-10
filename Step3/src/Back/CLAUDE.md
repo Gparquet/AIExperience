@@ -504,6 +504,13 @@ Ou utiliser le script `scripts/migrate-temporal-chunks.sql` fourni.
 ### CQRS avec MediatR
 - **Commandes** (écriture) → MediatR : `IRequest<T>` + handler + validator
 - **Requêtes** (lecture) → appel de service direct (pas de MediatR pour les lectures)
+- **Réponse d'un contrôleur après une commande d'écriture** : ne jamais rappeler le repository pour
+  relire l'entité qui vient d'être écrite. Le `Response` du handler doit déjà porter tout ce qui est
+  nécessaire à la réponse HTTP (Id, Status, FileName, CreatedAt...) ; les champs restants doivent
+  être ceux déjà connus du contrôleur avant l'envoi de la commande (ex: `ContentType`, `FileSizeBytes`
+  calculés à partir de l'`IFormFile`), jamais une relecture DB. Un repository injecté dans un
+  contrôleur ne doit servir qu'aux véritables lectures (`GetById`, `GetAll`...), jamais à
+  reconstruire la réponse d'un endpoint d'écriture.
 
 ### Options Pattern
 - Toute configuration = classe `*Options` liée à une section `appsettings.json`

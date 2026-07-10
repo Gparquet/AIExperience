@@ -20,6 +20,9 @@ namespace AIExperience.Rag.Infrastructure.Persistence
         /// <summary>Table des citations de sources.</summary>
         public DbSet<Citation> Citations => Set<Citation>();
 
+        /// <summary>Table des événements en attente de traitement par le worker d'ingestion.</summary>
+        public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.HasPostgresExtension("vector");

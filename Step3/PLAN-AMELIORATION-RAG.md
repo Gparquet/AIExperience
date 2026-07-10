@@ -20,6 +20,15 @@
 > ajout des constats **I-21** (timestamps inline embeddés — l'équivalent vidéo de R-15) et **I-22**
 > (double chemin d'ingestion vidéo incohérent), et insertion du **Lot 2-bis — Qualité de la
 > restitution vidéo** (I-21, I-22, I-10 remonté du reliquat Lot 1, montée de modèle Whisper).
+> **Révision : 2026-07-08** — ajout du constat **I-23** (UX d'upload vidéo bloquante : l'utilisateur
+> attend la fin de la transcription devant un spinner, sans progression ni notification de fin) et
+> insertion du **Lot 2-ter — UX d'upload & ingestion asynchrone** (I-23, **I-16 remonté du Lot 4**,
+> notification de fin de traitement poussée au front via SignalR).
+> **Révision : 2026-07-08 (bis)** — **Lot 2-bis livré** (commit `d170cc4`) : I-21 (texte pur dans
+> `TemporalChunker`, timing porté par `StartTime`/`EndTime`), I-22 (`VideoTextExtractor` supprimé,
+> un seul chemin d'ingestion vidéo), I-10 (chunks temporels ~1400 car. utiles + overlap + scission
+> des segments surdimensionnés), Whisper `ModelPath` → `ggml-medium.bin`. **Lot 2-ter devient le
+> prochain lot**.
 
 ---
 
@@ -46,7 +55,8 @@ LLM coûteuses sont activées par défaut sans batching.
 | **Lot 1** — robustesse ingestion | 🟨 **~80 % livré** (I-5, I-7, I-8, I-9 partiel, I-11, I-12, I-17, I-18) — reste : taille en tokens (I-9), I-10, I-13, I-14, I-15 | commits `f18c79a`, `61b20bc`, `f12b23a`, `742f59d` (02/07) |
 | **Lot 0-bis** — pertinence de la récupération | ✅ **100 % livré** — R-15/R-16/R-9/R-18/R-17 livrés, R-10 mesuré non viable et déprioritisé | commits `96a141a`, `69b8282` (03/07) + §4.5 |
 | **Lot 2** — multi-format complet | ✅ **Livré** — I-2 (DOCX/XLSX/CSV/PPTX/TXT/MD/JSON) + I-6 (détection de langue + `content_tsv` par langue). I-4 (OCR) hors périmètre | commits `5f761f1`..`e5a2142` (05/07), plan `docs/superpowers/plans/2026-07-03-lot2-multi-format-langue.md` |
-| **Lot 2-bis** — qualité de la restitution vidéo | 🔜 **Prochain lot** — I-21, I-22, I-10, Whisper `medium` (voir révision 06/07) | — |
+| **Lot 2-bis** — qualité de la restitution vidéo | ✅ **Livré** — I-21, I-22, I-10, Whisper `medium` (voir révision 08/07 bis) | commit `d170cc4` |
+| **Lot 2-ter** — UX d'upload & ingestion asynchrone | ✅ **Code livré** (08/07) — I-16/I-23, outbox + worker + SignalR ; vérification manuelle restante | — |
 | **Lots 3, 4** | ⏳ Non commencés | — |
 
 > ⚠️ **Effet de bord du Lot 0, non anticipé** : la désactivation du reranker (R-5) a supprimé la
@@ -105,6 +115,7 @@ LLM coûteuses sont activées par défaut sans batching.
 | I-20 | Pas de VAD ni de découpage des vidéos longues : tout le fichier en une passe, sans progression ni gestion mémoire | `WhisperTranscriptionService` | 🟡 Robustesse gros fichiers |
 | I-21 | **Timestamps inline embeddés** *(nouveau — révision 06/07)* : `TemporalChunker` incruste `[HH:MM:SS → HH:MM:SS]` dans le `Content` de chaque chunk, et c'est ce texte formaté qui part à l'embedding. Les segments Whisper étant courts, **~25–35 % de chaque chunk vidéo est du bruit numérique** → similarité question/chunk effondrée. Les timestamps sont pourtant déjà persistés proprement (`StartTime`/`EndTime`) | [TemporalChunker.cs:53](Step%203/src/Back/AIExperience.Rag.Application/Services/TemporalChunker.cs#L53), [IngestionService.cs:137](Step%203/src/Back/AIExperience.Rag.Application/Services/IngestionService.cs#L137) | 🔴 Restitution vidéo dégradée |
 | I-22 | **Double chemin d'ingestion vidéo incohérent** *(nouveau — révision 06/07)* : la page Documents accepte `.mp4/.mkv/…` mais ce chemin passe par `VideoTextExtractor.ExtractTextAsync` qui fige la langue à `"fr"` et retourne `FullText` (timestamps inline inclus) découpé par le `RecursiveChunker` texte → coupes arbitraires, **aucun `StartTime`/`EndTime`**, citations sans repère temporel. Seul `POST /api/video/transcribe` emprunte le bon chemin (`IngestFromSegmentsAsync`) | [VideoTextExtractor.cs:59](Step%203/src/Back/AIExperience.Rag.Application/Services/TextExtractor/VideoTextExtractor.cs#L59), [DocumentsPage.tsx:8](Step%203/src/Front/src/pages/DocumentsPage.tsx#L8) | 🔴 Qualité dépendante du point d'entrée |
+| I-23 | **UX d'upload vidéo bloquante** *(nouveau — révision 08/07)* : `POST /api/video/transcribe` exécute **extraction FFmpeg + transcription Whisper + ingestion complète dans la requête HTTP** ; côté front, `VideoPage` désactive tout le formulaire derrière un spinner tant que la réponse n'est pas revenue. Pour une vidéo de 30 min avec `ggml-small` (et a fortiori `medium`, point 32), l'utilisateur reste **bloqué plusieurs minutes** sans progression, sans pouvoir naviguer, et **sans notification de fin** ; risque de timeout navigateur/proxy sur les vidéos longues. C'est la manifestation UX du constat I-16 (ingestion synchrone), aggravée par la durée intrinsèque de la transcription | [VideoController.cs:42-51](Step%203/src/Back/AIExperience.Web.Api/Controllers/VideoController.cs#L42-L51), [VideoPage.tsx](Step%203/src/Front/src/pages/VideoPage.tsx) | 🔴 UX / utilisateur bloqué |
 
 ---
 
@@ -201,7 +212,7 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 13. ⏳ **I-4 OCR PDF scannés** : détection « PDF image » → OCR (Tesseract) en repli. **Explicitement reporté** à un lot ultérieur (décision utilisateur lors du cadrage du Lot 2 — dépendance native plus lourde à valider). *Impact 3 / L.*
 14. ✅ **I-6 Détection de langue** : heuristique maison par fréquence de mots vides (fr/en/es/de/it, zéro dépendance externe — choix délibéré pour rester cohérent avec la philosophie 100 % locale du projet), propagée à `content_tsv` (colonne non générée, calculée par l'application avec le `regconfig` correspondant à la langue détectée). Vidéo/Whisper déjà correct (langue transmise par `TranscribeVideoHandler`, seule la propagation en aval manquait). **Limitation connue documentée** : la requête full-text reste analysée dans une langue unique configurable (`RagOptions.Retrieval.FullTextLanguage`), pas détectée par question — un corpus multi-langues peut donc avoir une correspondance dégradée pour les documents dans une langue différente de celle configurée. *Livré — commits `312b004`..`e5a2142`.*
 
-### 🎬 Lot 2-bis — Qualité de la restitution vidéo (2 à 4 jours) — 🔜 PROCHAIN LOT
+### 🎬 Lot 2-bis — Qualité de la restitution vidéo (2 à 4 jours) — ✅ LIVRÉ (08/07, commit `d170cc4`)
 
 > **Nouveau (révision 06/07).** Répond au symptôme observé en usage réel : *« la restitution
 > n'est pas top sur les vidéos quand je pose une question »*. Cause n°1 : le texte embeddé des
@@ -209,26 +220,70 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 > corrigé les sources hors sujet. Cause n°2 : selon la page utilisée pour uploader (Documents vs
 > Vidéo), la qualité d'ingestion n'est pas la même (I-22).
 
-29. **I-21 Contenu de chunk épuré** : `TemporalChunker` garde le **texte pur** dans `Content` ;
+29. ✅ **I-21 Contenu de chunk épuré** : `TemporalChunker` garde le **texte pur** dans `Content` ;
     le timing reste porté par `StartTime`/`EndTime` (déjà persistés et propagés aux citations).
-    Pour que le LLM puisse citer un horodatage, injecter la plage temporelle dans **l'en-tête
-    d'extrait** de `BuildChatHistoryAsync` (`[Extrait i] Source: …, 00:12:30–00:13:10`), là où
-    page/section sont déjà injectés. ⚠️ **Ré-ingestion des vidéos obligatoire** (vecteurs stockés
-    calculés sur le texte pollué). *Impact 5 / S.*
-30. **I-22 Unifier les chemins d'ingestion vidéo** : l'upload d'une vidéo via `POST /api/documents`
-    doit déboucher sur `IngestFromSegmentsAsync` (langue paramétrable, timestamps préservés), pas
-    sur `FullText` + chunker texte. À défaut, court terme : retirer les extensions vidéo/audio de
-    la page Documents et du validateur d'upload pour forcer le passage par la page Vidéo. *Impact 4 / M.*
-31. **I-10 Chunking temporel** *(remonté du reliquat Lot 1)* : cible exprimée en caractères
-    **utiles** (~1 200–1 500, hors balisage), **overlap de 1–2 segments** entre chunks, scission
-    d'un segment surdimensionné avec interpolation des timestamps. *Impact 3 / S-M.*
-32. **Whisper `medium`** : passer `ModelPath` de `ggml-small.bin` à `ggml-medium.bin` — meilleure
-    matière première de transcription (config uniquement, au prix de la latence de transcription).
-    *Impact 2-3 / S.*
+    *Livré — commit `d170cc4`.* *Impact 5 / S.*
+30. ✅ **I-22 Unifier les chemins d'ingestion vidéo** : `VideoTextExtractor` supprimé, un seul
+    chemin d'ingestion vidéo subsiste (`IngestFromSegmentsAsync`, langue paramétrable, timestamps
+    préservés). *Livré — commit `d170cc4`.* *Impact 4 / M.*
+31. ✅ **I-10 Chunking temporel** *(remonté du reliquat Lot 1)* : cible exprimée en caractères
+    **utiles** (~1 400, hors balisage), **overlap d'un segment** entre chunks, scission d'un
+    segment surdimensionné avec interpolation des timestamps. *Livré — commit `d170cc4`.* *Impact 3 / S-M.*
+32. ✅ **Whisper `medium`** : `ModelPath` pointe désormais vers `ggml-medium.bin`. *Livré —
+    commit `d170cc4`.* *Impact 2-3 / S.*
 
 > **Vérification avant/après (mini R-13, même règle que le Lot 0-bis)** : constituer ~5 questions
 > « golden » sur une vidéo de référence du corpus et comparer citations et réponses avant/après
 > I-21 — c'est le correctif dont l'effet doit être le plus visible.
+
+### 📣 Lot 2-ter — UX d'upload & ingestion asynchrone (3 à 5 jours) — ✅ CODE LIVRÉ (08/07), vérification manuelle restant à faire par Geoffrey
+
+> **Nouveau (révision 08/07).** Répond au symptôme observé en usage réel : *« l'utilisateur est
+> bloqué pendant l'import d'une vidéo »*. Cause structurelle : toute la chaîne FFmpeg → Whisper →
+> embeddings s'exécute **dans la requête HTTP** (I-16/I-23). Le correctif rend l'ingestion
+> asynchrone et **notifie** l'utilisateur à la fin du traitement, au lieu de le faire attendre.
+>
+> **Révision d'implémentation (08/07)** : la file d'attente retenue est finalement la table
+> **`outbox_messages`** (déjà présente au schéma, jusque-là inutilisée) plutôt qu'un `Channel<Guid>`
+> en mémoire — décision prise en cours de session pour garantir l'atomicité "document créé ⇒ job
+> garanti d'être traité" (même transaction), et pour que la reprise après crash soit un simple
+> effet de bord de la sonde périodique plutôt qu'un chemin de code séparé. Les deux pipelines
+> (document, vidéo) restent deux commandes MediatR distinctes (CQRS respecté) partageant la même
+> plomberie asynchrone.
+
+33. ✅ **I-16 Ingestion asynchrone** : `POST /api/documents` et `POST /api/video/transcribe`
+    persistent le document en `Pending`, copient le fichier dans un répertoire de travail durable
+    (`WorkFileStore`, remplace `TempUploadedFile`) et retournent **`202 Accepted` + le document
+    immédiatement**. Un `IngestionWorker` (`BackgroundService`, sonde `outbox_messages` toutes les
+    3 s + réveil immédiat via `IngestionSignal`) exécute transcription/extraction → chunking →
+    embeddings **hors requête**, avec transitions `Pending → Processing → Completed/Failed`
+    (+ `ErrorMessage` persisté en cas d'échec, via `DocumentIngestionStatusUpdater`) — reprise après
+    crash = comportement normal de la sonde (un message non marqué traité est rejoué), sans code
+    de reprise séparé. *Livré — corrige au passage les deux bugs de statut identifiés
+    (`IngestDocumentHandler` ne passait jamais par `Processing`, `TranscribeVideoHandler` n'avait
+    pas de garde-fou d'échec) en scindant la vidéo en `CreateVideoTranscriptionJobCommand` +
+    `ProcessVideoTranscriptionJobCommand`, symétriques au pipeline document.*
+34. ✅ **I-23a Notification de fin de traitement** : hub **SignalR** (`/hubs/ingestion`,
+    `SignalRIngestionNotifier`) qui pousse les changements de statut (`documentId`, `status`,
+    `errorMessage`) ; le front affiche un **toast** non bloquant nommé, cross-page
+    (`IngestionNotificationsContext`) et met à jour la liste des documents en temps réel. **Repli
+    polling** (`GET /api/documents/{id}` toutes les 4 s) si la connexion SignalR n'est pas établie —
+    le statut en base reste la source de vérité. *Livré.*
+35. ✅ **I-23b Upload user-friendly** : barre de **progression d'upload** réelle (`XMLHttpRequest`
+    via `uploadWithProgress`) ; navigation libre pendant le traitement (formulaire libéré dès le
+    `202`) ; statuts relabellisés en français sur les cartes documents (`En file d'attente`,
+    `Traitement en cours…`, `Terminé`, `Échec` + raison en tooltip). *Livré — drop zone unifiée
+    Documents/Vidéo explicitement reportée (non bloquant pour ce lot, cf. note ci-dessous).*
+
+> **Non fait / reporté** : zone de drag & drop unifiée Documents/Vidéo (point 35, partie optionnelle) ;
+> progression fine de la transcription (%) — toujours hors périmètre (YAGNI), le passage
+> bloqué → notifié reste l'essentiel du gain UX.
+>
+> **Vérification manuelle restant à faire** (nécessite Docker/Postgres) : upload document réel,
+> upload vidéo réel jusqu'à `Completed`, redémarrage de l'API en pleine ingestion (valide la reprise
+> via la sonde outbox), coupure réseau côté front (valide le repli polling). Non exécutée dans cette
+> session — Smart App Control bloquait par ailleurs `dotnet test` sur la machine de Geoffrey
+> (indépendant du code, 211/211 tests passaient juste avant que le blocage apparaisse).
 
 ### 🏅 Lot 3 — Qualité & performance de la restitution (5 à 8 jours)
 
@@ -240,7 +295,7 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 
 ### 🎖️ Lot 4 — Industrialisation (continu)
 
-20. **I-16 Ingestion asynchrone** : câbler réellement l'Outbox + `BackgroundService` (statut `Processing → Completed/Failed`), libérer la requête HTTP. *Impact 5 / L.*
+20. ~~**I-16 Ingestion asynchrone**~~ → **remonté au Lot 2-ter (point 33)** — le blocage utilisateur à l'import vidéo (I-23) en fait une priorité UX, plus seulement un sujet d'industrialisation. Reste ici l'évolution **multi-instance** (remplacer le `Channel` en mémoire par la table `outbox_messages` déjà au schéma) si le besoin apparaît. *Impact 5 / L.*
 21. **R-12/R-14 Observabilité** : timings par étape (logs structurés / OpenTelemetry), suivi tokens. *Impact 3 / M.*
 22. **R-13 Harnais d'évaluation** : jeu de questions « golden » + métriques recall@k et fidélité, pour mesurer chaque amélioration. *Impact 4 / L.*
 
@@ -253,9 +308,10 @@ Semaine 1 : Lot 0 (quick wins critiques) ─────────────
 Semaine 2 : Lot 1 (robustesse ingestion) ─────────────► 🟨 ~80 % LIVRÉ (02/07)
 Semaine 3 : Lot 0-bis (pertinence récupération) ──────► ✅ LIVRÉ (03/07) — corrige les sources hors sujet
 Semaine 4 : Lot 2 (multi-format) ─────────────────────► ✅ LIVRÉ (05/07)
-Semaine 5 : Lot 2-bis (restitution vidéo) ────────────► 🔜 PROCHAIN — corrige la restitution vidéo
+Semaine 5 : Lot 2-bis (restitution vidéo) ────────────► ✅ LIVRÉ (08/07) — corrige la restitution vidéo
+Semaine 6 : Lot 2-ter (UX upload & ingestion async) ──► ✅ CODE LIVRÉ (08/07) — débloque l'utilisateur à l'import + notification de fin
 Ensuite   : Lot 3 (restitution restante — R-2, R-11, R-4/R-8)
-Continu   : Lot 4 (async, observabilité, évaluation) + reliquat Lot 1
+Continu   : Lot 4 (observabilité, évaluation, outbox multi-instance) + reliquat Lot 1
 ```
 
 **Trois actions à plus fort ratio impact/effort à faire en premier (révision 06/07)** :
@@ -273,8 +329,12 @@ Continu   : Lot 4 (async, observabilité, évaluation) + reliquat Lot 1
 - **Modèle LLM local 1B** : qualité limitée ; le harnais d'évaluation (R-13) permettra d'arbitrer un éventuel passage à un modèle plus capable. Le routage **Adaptive** dépend aussi de ce 1B : tant qu'il n'est pas évalué, préférer `Direct` par défaut est une option défendable.
 - **Ré-ingestion obligatoire après R-15** (préfixes `nomic`) : les vecteurs stockés sans préfixe sont incompatibles avec des requêtes préfixées. Prévoir un vidage/ré-upload du corpus (ou un script de ré-ingestion) dans le même lot.
 - **Ré-ingestion des vidéos obligatoire après I-21** : les vecteurs des chunks vidéo ont été calculés sur le texte pollué par les timestamps inline ; ils doivent être recalculés sur le texte épuré (même logique que R-15, limitée aux documents vidéo/audio).
+- **File d'ingestion en mémoire (Lot 2-ter)** : le `Channel<Guid>` du point 33 est mono-instance et perdu au redémarrage — assumé tant que l'API tourne en instance unique, à condition d'implémenter la **reprise au démarrage** (re-scan des documents `Pending`/`Processing`). Le passage multi-instance exige la bascule vers l'Outbox (`outbox_messages`, Lot 4). Le fichier uploadé doit survivre à la requête HTTP (copie dans un répertoire de travail, plus de `TempUploadedFile` supprimé en fin de requête) et être nettoyé en fin de traitement.
 
-> Lot 0-bis (points 23 à 28) et Lot 2 (points 12 à 14) livrés. Prochaine étape suggérée : **Lot 2-bis** (restitution vidéo, points 29 à 32) — répond au symptôme observé en usage réel — puis Lot 3 (restitution restante — R-2, R-11, R-4/R-8).
+> Lot 0-bis (points 23 à 28), Lot 2 (points 12 à 14), Lot 2-bis (points 29 à 32) et Lot 2-ter
+> (points 33 à 35) livrés côté code. Reste à faire avant de passer au lot suivant : la vérification
+> manuelle du Lot 2-ter (Docker/Postgres non disponible en session). Prochaine étape suggérée
+> ensuite : Lot 3 (restitution restante — R-2, R-11, R-4/R-8).
 
 ---
 
@@ -689,6 +749,88 @@ La page Documents accepte pourtant `.mp4/.mkv/.webm/.avi/.mov` + audio (`Documen
 **Correctif.**
 - **Cible** : dans le flux d'upload documents, détecter les extensions vidéo/audio et router vers le pipeline segments (`TranscribeVideoCommand`/`IngestFromSegmentsAsync`) avec langue paramétrable — un seul pipeline vidéo, quel que soit le point d'entrée.
 - **Court terme** (si le routage est reporté) : retirer les extensions vidéo/audio de `DocumentsPage.tsx` et du `UploadDocumentValidator`, et afficher un message orientant vers la page Vidéo.
+
+#### I-23 — UX d'upload vidéo bloquante, aucune notification de fin *(nouveau — révision 08/07)*
+
+**Mécanisme.** `VideoController.Transcribe` fait `await sender.Send(new TranscribeVideoCommand …)`
+**dans la requête HTTP** : extraction audio FFmpeg, transcription Whisper (l'étape longue — plusieurs
+minutes pour une vidéo de 30 min en `ggml-small`, davantage en `medium`), puis chunking, embeddings
+et upsert pgvector. Le fichier temporaire (`TempUploadedFile`) est supprimé à la fin du bloc, ce qui
+**impose** que tout le traitement ait lieu pendant la requête. Côté front, `VideoPage` positionne
+`processing = true` et désactive formulaire et bouton jusqu'au retour de la réponse complète.
+
+**Pourquoi c'est grave.** L'utilisateur est captif d'un spinner sans progression ni estimation, ne
+peut pas enchaîner un second upload ni utiliser le chat pendant ce temps, et n'est **pas prévenu**
+si l'ingestion se termine (ou échoue) alors qu'il a changé d'onglet. Au-delà de l'UX : timeout
+navigateur/proxy sur les vidéos longues (le traitement continue côté serveur mais la réponse est
+perdue), et aucun scaling possible. C'est I-16 vu depuis l'utilisateur.
+
+**Correctif (architecture cible — points 33 à 35).**
+
+```
+POST /api/video/transcribe (ou /api/documents)
+  1. Persiste Document (statut Pending) + copie le fichier dans un répertoire de travail
+  2. Écrit documentId dans le Channel<Guid> (file d'attente en mémoire)
+  3. Retourne 202 Accepted { documentId }              ← l'utilisateur est libéré ici
+                                                          (quelques secondes = transfert du fichier)
+IngestionWorker : BackgroundService
+  4. Consomme la file (1 ingestion à la fois — Whisper est déjà gourmand en CPU)
+  5. MarkAsProcessing → notifie → FFmpeg → Whisper → chunking → embeddings → upsert
+  6. MarkAsCompleted / MarkAsFailed(raison) → notifie → nettoie le fichier de travail
+  Au démarrage : re-enfile les documents restés Pending/Processing (reprise après crash/redémarrage)
+
+IngestionHub : SignalR (/hubs/ingestion)
+  7. Pousse { documentId, status, errorMessage } à chaque transition
+Front
+  8. Toast non bloquant « Vidéo “X” ingérée » + rafraîchissement du statut dans la liste
+     Repli : polling GET /api/documents/{id} si WebSocket indisponible
+```
+
+```csharp
+/// <summary>File d'attente d'ingestion en mémoire, consommée par l'IngestionWorker.</summary>
+public sealed class IngestionQueue(Channel<Guid> channel) : IIngestionQueue
+{
+    /// <summary>Enfile un document à ingérer (appelé par les handlers d'upload).</summary>
+    public ValueTask EnqueueAsync(Guid documentId, CancellationToken ct)
+        => channel.Writer.WriteAsync(documentId, ct);
+}
+
+/// <summary>Worker hébergé : consomme la file et exécute l'ingestion hors requête HTTP.</summary>
+public sealed class IngestionWorker(IIngestionQueue queue, IServiceScopeFactory scopes,
+    IIngestionNotifier notifier) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken ct)
+    {
+        await foreach (var documentId in queue.DequeueAllAsync(ct))
+        {
+            // Un scope DI par ingestion : AppDbContext et services Scoped frais
+            await using var scope = scopes.CreateAsyncScope();
+            try
+            {
+                await scope.ServiceProvider.GetRequiredService<IIngestionService>()
+                    .IngestDocumentAsync(documentId, ct);
+                await notifier.NotifyStatusAsync(documentId, DocumentStatus.Completed, null, ct);
+            }
+            catch (Exception ex) // une ingestion échouée ne doit jamais tuer le worker
+            {
+                await notifier.NotifyStatusAsync(documentId, DocumentStatus.Failed, ex.Message, ct);
+            }
+        }
+    }
+}
+```
+
+> **Respect de la Clean Architecture** : `IIngestionQueue` et `IIngestionNotifier` sont des
+> interfaces **Domain/Application** ; `Channel`, `BackgroundService` et le hub SignalR vivent en
+> **Infrastructure/Web.Api**. Le handler d'upload ne connaît que les abstractions.
+
+**Alternatives considérées.**
+
+| Option | Principe | Verdict |
+|--------|----------|---------|
+| **A. `Channel` + `BackgroundService` + SignalR + reprise au démarrage** | File en mémoire, worker hébergé, push temps réel | ✅ **Recommandée** — zéro infra nouvelle, cohérente avec la philosophie 100 % locale, durabilité suffisante en instance unique grâce à la reprise |
+| B. Outbox (`outbox_messages`) + worker de polling + SignalR | File durable en base (table déjà au schéma) | Cible **multi-instance** (Lot 4) — plus robuste mais plus de code (polling, verrouillage `FOR UPDATE SKIP LOCKED`) pour un bénéfice nul tant qu'il n'y a qu'une instance |
+| C. Polling front seul (pas de push) | Le front interroge `GET /api/documents/{id}` et affiche le toast au passage à `Completed` | Acceptable en repli (et nécessaire comme filet de sécurité), mais notification différée de l'intervalle de polling et trafic inutile — insuffisant seul |
 
 ## B. RESTITUTION (RAG / LLM)
 

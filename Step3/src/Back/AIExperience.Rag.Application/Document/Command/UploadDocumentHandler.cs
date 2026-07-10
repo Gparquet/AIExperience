@@ -1,8 +1,11 @@
 using AIExperience.Rag.Application.Document.Exceptions;
+using AIExperience.Rag.Application.Jobs;
+using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using MediatR;
+using System.Text.Json;
 
 namespace AIExperience.Rag.Application.Document.Command;
 
@@ -11,9 +14,15 @@ namespace AIExperience.Rag.Application.Document.Command;
 /// Compare le fichier uploadé au document le plus récent portant le même nom : bloque la création
 /// si aucun remplacement n'a été confirmé (doublon exact ou nouvelle version détectée), ou supprime
 /// l'ancien document et crée le nouveau de façon atomique (une seule transaction) si confirmé.
+/// Met aussi en file l'ingestion à traiter en arrière-plan, dans cette même transaction : le
+/// document créé et le job qui va le traiter sont ainsi soit tous les deux persistés, soit aucun
+/// des deux.
 /// </summary>
 public sealed class UploadDocumentHandler(
-    IDocumentRepository documentRepository, IUnitOfWork unitOfWork, IFileHashService fileHashService) : IRequestHandler<UploadDocumentCommand, UploadDocumentResponse>
+    IDocumentRepository documentRepository,
+    IOutboxRepository outboxRepository,
+    IUnitOfWork unitOfWork,
+    IFileHashService fileHashService) : IRequestHandler<UploadDocumentCommand, UploadDocumentResponse>
 {
     /// <summary>
     /// Calcule le hash du fichier puis exécute la détection de doublon/nouvelle version et la création
@@ -54,9 +63,17 @@ public sealed class UploadDocumentHandler(
           request.UserId,
           request.DocumentMetadata,
           request.ChunkingStrategy,
-          contentHash);
+          contentHash,
+          id: request.Id);
 
+        document.SetFileReference(request.FilePath);
         await documentRepository.AddAsync(document, cancellationToken);
+
+        // Le job d'ingestion est mis en file dans la même transaction que la création du
+        // document : soit les deux sont enregistrés ensemble, soit aucun des deux ne l'est.
+        var payload = JsonSerializer.Serialize(new IngestionJobPayload { DocumentId = document.Id });
+        outboxRepository.Add(OutboxMessage.Create(IngestionEventTypes.DocumentIngestionRequested, payload));
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return new UploadDocumentResponse

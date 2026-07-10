@@ -8,12 +8,20 @@ public record DocumentResponse(
     string ContentType,
     long FileSizeBytes,
     string Status,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string? ErrorMessage = null);
+
+/// <summary>Transcription d'une vidéo/audio, consultée après coup une fois le document "Completed".</summary>
+public record VideoTranscriptionResponse(string? RawTranscription, string? CleanedTranscription);
 
 public record UploadDocumentRequest(
     ChunkingStrategy ChunkingStrategy = ChunkingStrategy.Recursive);
 
-/// <summary>Résultat de la ré-ingestion (R-15) : nombre de chunks ré-embeddés avec le préfixe nomic correct.</summary>
+/// <summary>
+/// Résultat d'une ré-ingestion complète du corpus. Le modèle d'embedding nomic exige un préfixe
+/// ("search_document: " / "search_query: ") devant le texte pour produire des vecteurs corrects ;
+/// cette réponse indique combien de chunks ont été recalculés avec ce préfixe et le temps que ça a pris.
+/// </summary>
 public record ReembedCorpusResponse(int ChunksReembedded, long DurationMs);
 
 /// <summary>Requête de pré-vérification de doublon (nom de fichier + hash calculé côté navigateur).</summary>

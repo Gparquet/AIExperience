@@ -1,5 +1,6 @@
 using AIExperience.Rag.Application.Document.Command;
 using AIExperience.Rag.Application.Document.Exceptions;
+using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
@@ -31,6 +32,19 @@ public sealed class UploadDocumentHandlerTests
     private sealed class FakeFileHashService(string hash) : IFileHashService
     {
         public Task<string> ComputeSha256Async(string filePath, CancellationToken ct = default) => Task.FromResult(hash);
+    }
+
+    /// <summary>Faux repository outbox en mémoire respectant le contrat <see cref="IOutboxRepository"/>.</summary>
+    private sealed class FakeOutboxRepository : IOutboxRepository
+    {
+        public List<OutboxMessage> Messages { get; } = [];
+
+        public void Add(OutboxMessage message) => Messages.Add(message);
+
+        public Task<IReadOnlyList<OutboxMessage>> GetUnprocessedAsync(int maxCount, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<OutboxMessage>>(Messages.Where(m => m.ProcessedAt is null).ToList());
+
+        public Task UpdateAsync(OutboxMessage message, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     /// <summary>Faux repository en mémoire respectant le contrat <see cref="IDocumentRepository"/>.</summary>
@@ -89,12 +103,36 @@ public sealed class UploadDocumentHandlerTests
     {
         var repository = new FakeDocumentRepository();
         var unitOfWork = new FakeUnitOfWork();
-        var handler = new UploadDocumentHandler(repository, unitOfWork, new FakeFileHashService("hash-a"));
+        var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), unitOfWork, new FakeFileHashService("hash-a"));
 
         var response = await handler.Handle(CreateCommand(), CancellationToken.None);
 
         repository.Documents.Should().ContainSingle(d => d.Id == response.DocumentId);
         unitOfWork.SaveChangesCallCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Handle_NoExistingDocument_QueuesAnIngestionJobForTheNewDocument()
+    {
+        var repository = new FakeDocumentRepository();
+        var outbox = new FakeOutboxRepository();
+        var handler = new UploadDocumentHandler(repository, outbox, new FakeUnitOfWork(), new FakeFileHashService("hash-a"));
+
+        var response = await handler.Handle(CreateCommand(), CancellationToken.None);
+
+        outbox.Messages.Should().ContainSingle(m =>
+            m.EventType == IngestionEventTypes.DocumentIngestionRequested && m.Payload.Contains(response.DocumentId.ToString()));
+    }
+
+    [Fact]
+    public async Task Handle_SetsFileReferenceToTheUploadedFilePath()
+    {
+        var repository = new FakeDocumentRepository();
+        var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), new FakeFileHashService("hash-a"));
+
+        var response = await handler.Handle(CreateCommand(), CancellationToken.None);
+
+        repository.Documents.Single(d => d.Id == response.DocumentId).FileReference.Should().Be("fake/rapport.pdf");
     }
 
     [Fact]
@@ -104,7 +142,7 @@ public sealed class UploadDocumentHandlerTests
         var existing = Document.Create("rapport.pdf", "application/pdf", 1024, "user-1",
             DocumentMetadata.Create(title: "Rapport"), contentHash: "hash-a");
         repository.Documents.Add(existing);
-        var handler = new UploadDocumentHandler(repository, new FakeUnitOfWork(), new FakeFileHashService("hash-a"));
+        var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), new FakeFileHashService("hash-a"));
 
         var act = () => handler.Handle(CreateCommand(), CancellationToken.None);
 
@@ -121,7 +159,7 @@ public sealed class UploadDocumentHandlerTests
         var existing = Document.Create("rapport.pdf", "application/pdf", 1024, "user-1",
             DocumentMetadata.Create(title: "Rapport"), contentHash: "hash-old");
         repository.Documents.Add(existing);
-        var handler = new UploadDocumentHandler(repository, new FakeUnitOfWork(), new FakeFileHashService("hash-new"));
+        var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), new FakeFileHashService("hash-new"));
 
         var act = () => handler.Handle(CreateCommand(), CancellationToken.None);
 
@@ -139,7 +177,7 @@ public sealed class UploadDocumentHandlerTests
             DocumentMetadata.Create(title: "Rapport"), contentHash: "hash-a");
         repository.Documents.Add(existing);
         var unitOfWork = new FakeUnitOfWork();
-        var handler = new UploadDocumentHandler(repository, unitOfWork, new FakeFileHashService("hash-a"));
+        var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), unitOfWork, new FakeFileHashService("hash-a"));
 
         var response = await handler.Handle(CreateCommand(existing.Id), CancellationToken.None);
 
@@ -157,7 +195,7 @@ public sealed class UploadDocumentHandlerTests
             DocumentMetadata.Create(title: "Rapport"), contentHash: "hash-old");
         repository.Documents.Add(existing);
         var unitOfWork = new FakeUnitOfWork();
-        var handler = new UploadDocumentHandler(repository, unitOfWork, new FakeFileHashService("hash-new"));
+        var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), unitOfWork, new FakeFileHashService("hash-new"));
 
         var response = await handler.Handle(CreateCommand(existing.Id), CancellationToken.None);
 
@@ -171,7 +209,7 @@ public sealed class UploadDocumentHandlerTests
     public async Task Handle_ReplaceIdProvidedButNoDuplicateFound_CreatesDocumentNormally()
     {
         var repository = new FakeDocumentRepository();
-        var handler = new UploadDocumentHandler(repository, new FakeUnitOfWork(), new FakeFileHashService("hash-a"));
+        var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), new FakeFileHashService("hash-a"));
         var staleReplaceId = Guid.NewGuid();
 
         var response = await handler.Handle(CreateCommand(staleReplaceId), CancellationToken.None);
@@ -195,7 +233,7 @@ public sealed class UploadDocumentHandlerTests
         repository.Documents.Add(newer);
         // Le hash uploadé correspond à "newer" : si la comparaison ciblait "older" par erreur,
         // ce test échouerait (MatchType serait SameNameDifferentContent et ExistingDocumentId celui de "older").
-        var handler = new UploadDocumentHandler(repository, new FakeUnitOfWork(), new FakeFileHashService("hash-newer"));
+        var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), new FakeFileHashService("hash-newer"));
 
         var act = () => handler.Handle(CreateCommand(), CancellationToken.None);
 

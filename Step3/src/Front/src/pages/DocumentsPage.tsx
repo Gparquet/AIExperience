@@ -1,17 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import type { DocumentMatchType, DocumentResponse, ExistingDocumentInfo } from '../types';
+import { useIngestionNotifications } from '../context/IngestionNotificationsContext';
+import type { DocumentMatchType, DocumentResponse, DocumentStatus, ExistingDocumentInfo } from '../types';
 
-// Formats supportés côté back-end (CompositeTextExtractor) — I-2 du plan Lot 2.
+// Formats supportés côté back-end (CompositeTextExtractor).
 const ACCEPTED_EXTENSIONS =
   '.pdf,.html,.htm,.docx,.xlsx,.csv,.pptx,.txt,.md,.json,.mp4,.mkv,.webm,.avi,.mov,.wav,.mp3,.m4a,.ogg,.flac';
 
+const statusColor: Record<DocumentStatus, string> = {
+  Completed: 'badge-success',
+  Pending: 'badge-warning',
+  Processing: 'badge-info',
+  Failed: 'badge-error',
+};
+
+// Le back-end n'introduit pas de nouveau statut pour la progression fine — on relabellise
+// seulement à l'affichage les statuts existants (Pending/Processing) pour parler en file d'attente.
+const statusLabel: Record<DocumentStatus, string> = {
+  Pending: 'En file d’attente',
+  Processing: 'Traitement en cours…',
+  Completed: 'Terminé',
+  Failed: 'Échec',
+};
+
 export default function DocumentsPage() {
   const navigate = useNavigate();
+  const { registerPendingDocument, subscribe } = useIngestionNotifications();
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -36,6 +55,13 @@ export default function DocumentsPage() {
 
   useEffect(() => { loadDocuments(); }, []);
 
+  // Patch en place le statut d'un document dès qu'il change (notification temps réel ou polling
+  // de repli), sans recharger toute la liste.
+  useEffect(() => subscribe(event => {
+    setDocuments(prev => prev.map(doc =>
+      doc.id === event.documentId ? { ...doc, status: event.status, errorMessage: event.errorMessage } : doc));
+  }), [subscribe]);
+
   useEffect(() => {
     if (!checkAllRef.current) return;
     checkAllRef.current.indeterminate = selected.size > 0 && selected.size < documents.length;
@@ -59,6 +85,7 @@ export default function DocumentsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadProgress(0);
     setError(null);
     try {
       // Si crypto.subtle est indisponible (contexte non sécurisé), on saute la pré-vérification :
@@ -78,8 +105,11 @@ export default function DocumentsPage() {
         }
       }
 
-      await api.documents.upload(file);
-      await loadDocuments();
+      // 202 Accepted : seul le transfert du fichier est attendu ici, l'ingestion elle-même
+      // continue en arrière-plan — d'où le déblocage immédiat du formulaire ci-dessous.
+      const created = await api.documents.upload(file, 'Recursive', undefined, setUploadProgress);
+      setDocuments(prev => [created, ...prev]);
+      registerPendingDocument(created.id, created.fileName);
     } catch (err) {
       // Repli si le doublon n'a pas été intercepté par la pré-vérification (ex. crypto.subtle
       // indisponible) : le back-end renvoie alors un 409 brut qu'on remplace par un message générique.
@@ -98,10 +128,12 @@ export default function DocumentsPage() {
     if (!pendingDuplicate) return;
     const { file, existing } = pendingDuplicate;
     setUploading(true);
+    setUploadProgress(0);
     setError(null);
     try {
-      await api.documents.upload(file, 'Recursive', existing.id);
-      await loadDocuments();
+      const created = await api.documents.upload(file, 'Recursive', existing.id, setUploadProgress);
+      setDocuments(prev => [created, ...prev.filter(d => d.id !== existing.id)]);
+      registerPendingDocument(created.id, created.fileName);
     } catch (err) {
       // Même repli que dans handleUpload : un 409 ici signifierait une nouvelle collision
       // détectée par le back-end au moment du remplacement (cas rare).
@@ -166,13 +198,6 @@ export default function DocumentsPage() {
     return `${(n / 1_048_576).toFixed(1)} Mo`;
   }
 
-  const statusColor: Record<string, string> = {
-    Completed: 'badge-success',
-    Pending: 'badge-warning',
-    Processing: 'badge-info',
-    Failed: 'badge-error',
-  };
-
   return (
     <div className="page">
       <div className="page-header">
@@ -185,7 +210,7 @@ export default function DocumentsPage() {
           )}
           <label className={`btn btn-primary ${uploading ? 'btn-disabled' : ''}`}>
             {uploading && <span className="btn-spinner" />}
-            {uploading ? 'Importation…' : '+ Ajouter un document'}
+            {uploading ? 'Envoi…' : '+ Ajouter un document'}
             <input
               ref={fileRef}
               type="file"
@@ -203,7 +228,12 @@ export default function DocumentsPage() {
       {uploading && (
         <div className="upload-progress">
           <div className="spinner" />
-          Importation et traitement du document en cours…
+          <div style={{ flex: 1 }}>
+            <div>Envoi du fichier — {uploadProgress}%</div>
+            <div className="progress-bar">
+              <div className="progress-bar-fill" style={{ width: `${uploadProgress}%` }} />
+            </div>
+          </div>
         </div>
       )}
 
@@ -250,8 +280,8 @@ export default function DocumentsPage() {
                 <td className="filename">{doc.fileName}</td>
                 <td>{formatBytes(doc.fileSizeBytes)}</td>
                 <td>
-                  <span className={`badge ${statusColor[doc.status] ?? ''}`}>
-                    {doc.status}
+                  <span className={`badge ${statusColor[doc.status]}`} title={doc.errorMessage ?? undefined}>
+                    {statusLabel[doc.status]}
                   </span>
                 </td>
                 <td>{new Date(doc.createdAt).toLocaleDateString('fr-FR')}</td>

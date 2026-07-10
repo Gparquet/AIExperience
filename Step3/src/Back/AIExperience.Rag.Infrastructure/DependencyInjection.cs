@@ -1,8 +1,11 @@
-﻿using AIExperience.Rag.Domain.Interfaces.Repositories;
+﻿using AIExperience.Rag.Application.Jobs;
+using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Rag.Domain.Interfaces.Services.AI;
 using AIExperience.Rag.Domain.Interfaces.Services.Video;
 using AIExperience.Rag.Infrastructure.AI.Embedding;
+using AIExperience.Rag.Infrastructure.Notifications;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using AIExperience.Rag.Infrastructure.AI.Rag;
 using AIExperience.Rag.Infrastructure.AI.Transcription;
 using AIExperience.Rag.Infrastructure.AI.Video;
@@ -49,7 +52,8 @@ public static class DependencyInjection
             .ConfigureAiService()
             .AddSemanticKernel(configuration)
             .AddRagPipeline()
-            .AddVideoTranscription(configuration);
+            .AddVideoTranscription(configuration)
+            .AddIngestionWorkerInfrastructure(configuration);
 
     }
 
@@ -57,6 +61,23 @@ public static class DependencyInjection
     {
         services.AddOptions<AiProviderOptions>().Bind(configuration.GetSection("AI"));
         services.AddOptions<RagOptions>().Bind(configuration.GetSection("RagOptions"));
+        return services;
+    }
+
+    /// <summary>
+    /// Enregistre les briques dont a besoin le worker d'ingestion pour tourner (le worker
+    /// lui-même, en couche Application, est ajouté par <c>AddApplication()</c>).
+    /// </summary>
+    private static IServiceCollection AddIngestionWorkerInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<IngestionOptions>().Bind(configuration.GetSection(IngestionOptions.SectionName));
+        // Singleton : partagé par toutes les requêtes HTTP et par le worker lui-même, pour que
+        // n'importe quel upload puisse le réveiller immédiatement.
+        services.AddSingleton<IngestionSignal>();
+        // TryAdd : ne s'applique que si le composition root (ex. l'application console) n'a pas
+        // déjà enregistré sa propre implémentation — le Web.Api enregistre la sienne (SignalR)
+        // avant d'appeler AddInfrastructure, qui doit donc rester prioritaire.
+        services.TryAddSingleton<IIngestionNotifier, NullIngestionNotifier>();
         return services;
     }
 
@@ -92,6 +113,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<AppDbContext>());
         services.AddScoped<IDocumentRepository, DocumentRepository>();
         services.AddScoped<IConversationRepository,  ConversationRepository>();
+        services.AddScoped<IOutboxRepository, OutboxRepository>();
 
         return services;
     }

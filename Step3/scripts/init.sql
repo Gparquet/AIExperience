@@ -26,6 +26,12 @@ CREATE TABLE IF NOT EXISTS documents (
     chunking_strategy    VARCHAR(50)  NOT NULL DEFAULT 'Recursive',
     file_reference       VARCHAR(500),
     error_message        VARCHAR(2000),
+    -- Transcription vidéo/audio persistée pour être consultée après coup (l'ingestion
+    -- vidéo est asynchrone : la transcription n'est plus renvoyée en synchrone à l'upload).
+    raw_transcription     TEXT,
+    cleaned_transcription TEXT,
+    index_in_rag                 BOOLEAN NOT NULL DEFAULT true,
+    clean_transcription_with_llm BOOLEAN NOT NULL DEFAULT false,
     -- Owned type DocumentMetadata (aplati dans la même table)
     metadata_title       VARCHAR(500),
     metadata_author      VARCHAR(255),
