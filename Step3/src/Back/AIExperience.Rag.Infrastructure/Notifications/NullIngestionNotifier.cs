@@ -1,4 +1,5 @@
 using AIExperience.Rag.Domain.Interfaces.Services;
+using AIExperience.Rag.Domain.Models;
 
 namespace AIExperience.Rag.Infrastructure.Notifications;
 
@@ -11,5 +12,8 @@ namespace AIExperience.Rag.Infrastructure.Notifications;
 public sealed class NullIngestionNotifier : IIngestionNotifier
 {
     public Task NotifyStatusChangedAsync(Guid documentId, string status, string? errorMessage, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task NotifyProgressAsync(Guid documentId, IngestionProgress progress, CancellationToken ct = default)
         => Task.CompletedTask;
 }

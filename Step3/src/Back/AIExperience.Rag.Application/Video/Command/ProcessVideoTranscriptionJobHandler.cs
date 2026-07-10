@@ -1,6 +1,9 @@
 using AIExperience.Rag.Application.Document.Command;
+using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
+using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Rag.Domain.Interfaces.Services.Video;
+using AIExperience.Rag.Domain.Models;
 using MediatR;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -21,6 +24,7 @@ public sealed class ProcessVideoTranscriptionJobHandler(
     Domain.Interfaces.Services.IIngestionService ingestionService,
     IDocumentRepository documentRepository,
     DocumentIngestionStatusUpdater statusUpdater,
+    IIngestionProgressReporter progressReporter,
     ILogger<ProcessVideoTranscriptionJobHandler> logger)
     : IRequestHandler<ProcessVideoTranscriptionJobCommand, ProcessVideoTranscriptionJobResponse>
 {
@@ -47,12 +51,23 @@ public sealed class ProcessVideoTranscriptionJobHandler(
             if (!isAudioOnly)
             {
                 logger.LogInformation("Extraction audio depuis la vidéo : {File}", filePath);
+                await progressReporter.EnterStageAsync(document.Id, IngestionStage.ExtractingAudio, cancellationToken);
                 var tempAudioPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.wav");
                 audioPath = await videoProcessor.ExtractAudioAsync(filePath, tempAudioPath, cancellationToken);
             }
 
             logger.LogInformation("Transcription en cours (langue : {Lang})...", document.Metadata.Language);
-            var result = await transcriptionService.TranscribeAsync(audioPath, document.Metadata.Language, cancellationToken);
+            await progressReporter.EnterStageAsync(document.Id, IngestionStage.Transcribing, cancellationToken);
+            var totalDuration = await videoProcessor.TryGetMediaDurationAsync(audioPath, cancellationToken) ?? TimeSpan.Zero;
+            var result = await transcriptionService.TranscribeAsync(audioPath, document.Metadata.Language,
+                onSegment: seg =>
+                {
+                    int? pct = totalDuration > TimeSpan.Zero
+                        ? Math.Clamp((int)(100.0 * seg.End.TotalSeconds / totalDuration.TotalSeconds), 0, 99)
+                        : null;
+                    _ = progressReporter.ReportAsync(document.Id, IngestionStage.Transcribing, pct, new IngestionProgressCounters());
+                },
+                cancellationToken);
             logger.LogInformation("Transcription terminée : {Segments} segments, durée {Duration}",
                 result.Segments.Count, result.Duration);
 
@@ -68,6 +83,7 @@ public sealed class ProcessVideoTranscriptionJobHandler(
 
             document.SetTranscription(result.FullText, cleanedText);
             await statusUpdater.MarkCompletedAsync(document, cancellationToken);
+            await progressReporter.ClearAsync(document.Id, cancellationToken);
         }
         catch (OperationCanceledException)
         {

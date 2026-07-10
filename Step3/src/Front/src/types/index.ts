@@ -10,6 +10,8 @@ export interface DocumentResponse {
   createdAt: string;
   /** Raison de l'échec si le statut est "Failed", absente sinon. */
   errorMessage?: string | null;
+  /** Avancement fin d'ingestion (présent surtout pendant/juste après le traitement). */
+  ingestionProgress?: IngestionProgress | null;
 }
 
 /** Événement poussé par le hub SignalR à chaque changement de statut d'un document. */
@@ -17,6 +19,37 @@ export interface DocumentStatusChangedEvent {
   documentId: string;
   status: DocumentStatus;
   errorMessage: string | null;
+}
+
+/** Étapes fines du pipeline d'ingestion (miroir de l'enum back-end IngestionStage). */
+export type IngestionStage =
+  | 'Queued' | 'ExtractingAudio' | 'Transcribing' | 'ExtractingText'
+  | 'Chunking' | 'Embedding' | 'Storing' | 'Completed' | 'Failed';
+
+/** Compteurs de détail d'une étape (tous optionnels selon l'étape). */
+export interface IngestionProgressCounters {
+  batchIndex?: number | null;
+  batchCount?: number | null;
+  chunksDone?: number | null;
+  chunksTotal?: number | null;
+  segmentsDone?: number | null;
+  segmentsTotal?: number | null;
+}
+
+/** Instantané d'avancement fin d'une ingestion. */
+export interface IngestionProgress {
+  stage: IngestionStage;
+  percent: number | null;
+  counters: IngestionProgressCounters;
+  updatedAt: string;
+}
+
+/** Événement SignalR d'avancement fin, distinct de DocumentStatusChangedEvent. */
+export interface DocumentProgressChangedEvent {
+  documentId: string;
+  stage: IngestionStage;
+  percent: number | null;
+  counters: IngestionProgressCounters;
 }
 
 /** Type de correspondance détecté avec un document existant de même nom. */

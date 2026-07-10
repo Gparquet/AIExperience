@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
 import { createIngestionHubConnection } from '../realtime/ingestionHub';
-import type { DocumentStatusChangedEvent } from '../types';
+import type { DocumentProgressChangedEvent, DocumentStatusChangedEvent } from '../types';
 
 type StatusListener = (event: DocumentStatusChangedEvent) => void;
 
@@ -14,6 +14,11 @@ interface IngestionNotificationsContextValue {
   registerPendingDocument: (documentId: string, fileName: string) => void;
   /** S'abonne à tous les changements de statut, pour patcher l'état local d'une page (liste de documents...). */
   subscribe: (listener: StatusListener) => () => void;
+  /**
+   * S'abonne à l'avancement fin d'UN document (filtré par id). Réservé à la page de détail :
+   * les ticks haute fréquence ne concernent pas la liste, qui ne s'abonne qu'au statut grossier.
+   */
+  subscribeProgress: (documentId: string, listener: (event: DocumentProgressChangedEvent) => void) => () => void;
 }
 
 const IngestionNotificationsContext = createContext<IngestionNotificationsContextValue | null>(null);
@@ -24,6 +29,8 @@ const POLL_INTERVAL_MS = 4000;
 export function IngestionNotificationsProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
   const listenersRef = useRef(new Set<StatusListener>());
+  // Listeners d'avancement fin, indexés par documentId (un seul document suivi à la fois en pratique).
+  const progressListenersRef = useRef(new Map<string, Set<(e: DocumentProgressChangedEvent) => void>>());
   // Associe chaque document en cours de traitement à son nom, pour donner un libellé au toast
   // et savoir quels documents suivre par polling si la connexion temps réel est indisponible.
   const pendingNamesRef = useRef(new Map<string, string>());
@@ -50,6 +57,10 @@ export function IngestionNotificationsProvider({ children }: { children: ReactNo
   useEffect(() => {
     const connection = createIngestionHubConnection();
     connection.on('documentStatusChanged', handleStatusChanged);
+    // Dispatch de l'avancement fin uniquement aux abonnés du document concerné.
+    connection.on('documentProgressChanged', (event: DocumentProgressChangedEvent) => {
+      progressListenersRef.current.get(event.documentId)?.forEach(listener => listener(event));
+    });
     connection.onreconnected(() => { connectedRef.current = true; });
     connection.onreconnecting(() => { connectedRef.current = false; });
     connection.onclose(() => { connectedRef.current = false; });
@@ -92,8 +103,19 @@ export function IngestionNotificationsProvider({ children }: { children: ReactNo
     return () => { listenersRef.current.delete(listener); };
   }, []);
 
+  const subscribeProgress = useCallback((documentId: string, listener: (event: DocumentProgressChangedEvent) => void) => {
+    const map = progressListenersRef.current;
+    if (!map.has(documentId)) map.set(documentId, new Set());
+    map.get(documentId)!.add(listener);
+    return () => {
+      const set = map.get(documentId);
+      set?.delete(listener);
+      if (set && set.size === 0) map.delete(documentId);
+    };
+  }, []);
+
   return (
-    <IngestionNotificationsContext.Provider value={{ registerPendingDocument, subscribe }}>
+    <IngestionNotificationsContext.Provider value={{ registerPendingDocument, subscribe, subscribeProgress }}>
       {children}
       {toast && (
         <div className={`toast toast-${toast.kind}`}>

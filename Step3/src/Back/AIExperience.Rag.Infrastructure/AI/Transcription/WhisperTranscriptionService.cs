@@ -51,6 +51,7 @@ public sealed class WhisperTranscriptionService : ITranscriptionService, IDispos
     public async Task<TranscriptionResult> TranscribeAsync(
         string audioPath,
         string language = "fr",
+        Action<TranscriptionSegment>? onSegment = null,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(audioPath))
@@ -76,6 +77,9 @@ public sealed class WhisperTranscriptionService : ITranscriptionService, IDispos
             };
 
             segments.Add(ts);
+
+            // Rapporte le segment tout juste transcrit à l'appelant (avancement temps réel).
+            onSegment?.Invoke(ts);
 
             // Format avec timestamps : [00:00:05 → 00:00:12] Voici le contenu...
             fullText.AppendLine($"[{segment.Start:hh\\:mm\\:ss} → {segment.End:hh\\:mm\\:ss}] {segment.Text.Trim()}");

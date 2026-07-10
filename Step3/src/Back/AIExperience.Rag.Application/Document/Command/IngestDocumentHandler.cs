@@ -17,6 +17,7 @@ public sealed class IngestDocumentHandler(
     IIngestionService ingestionService,
     IDocumentRepository documentRepository,
     DocumentIngestionStatusUpdater statusUpdater,
+    IIngestionProgressReporter progressReporter,
     ILogger<IngestDocumentHandler> logger) : IRequestHandler<IngestDocumentCommand, IngestDocumentResponse>
 {
     /// <summary>Extensions vidéo/audio routées vers le pipeline segments plutôt que vers l'extraction texte générique.</summary>
@@ -48,6 +49,7 @@ public sealed class IngestDocumentHandler(
             }
 
             await statusUpdater.MarkCompletedAsync(document, cancellationToken);
+            await progressReporter.ClearAsync(document.Id, cancellationToken);
         }
         catch (OperationCanceledException)
         {

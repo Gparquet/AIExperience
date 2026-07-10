@@ -78,6 +78,9 @@ public static class DependencyInjection
         // déjà enregistré sa propre implémentation — le Web.Api enregistre la sienne (SignalR)
         // avant d'appeler AddInfrastructure, qui doit donc rester prioritaire.
         services.TryAddSingleton<IIngestionNotifier, NullIngestionNotifier>();
+        // Singleton : conserve en mémoire l'état de throttling par document. Résout AppDbContext
+        // via un scope à chaque persistance (le worker est mono-instance, pas de contention).
+        services.AddSingleton<IIngestionProgressReporter, IngestionProgressReporter>();
         return services;
     }
 

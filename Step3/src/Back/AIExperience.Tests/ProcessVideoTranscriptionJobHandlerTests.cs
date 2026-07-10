@@ -5,6 +5,7 @@ using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Rag.Domain.Interfaces.Services.Video;
+using AIExperience.Rag.Domain.Models;
 using AIExperience.Rag.Domain.Models.Video;
 using FluentAssertions;
 using Microsoft.Extensions.AI;
@@ -57,6 +58,9 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
             NotifiedStatuses.Add(status);
             return Task.CompletedTask;
         }
+
+        public Task NotifyProgressAsync(Guid documentId, IngestionProgress progress, CancellationToken ct = default)
+            => Task.CompletedTask;
     }
 
     private sealed class FakeVideoProcessorService(Exception? exceptionToThrow = null) : IVideoProcessorService
@@ -65,11 +69,15 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
             => exceptionToThrow is null ? Task.FromResult(outputAudioPath) : Task.FromException<string>(exceptionToThrow);
 
         public bool IsSupported(string filePath) => true;
+
+        public Task<TimeSpan?> TryGetMediaDurationAsync(string path, CancellationToken cancellationToken = default)
+            => Task.FromResult<TimeSpan?>(null);
     }
 
     private sealed class FakeTranscriptionService(TranscriptionResult result) : ITranscriptionService
     {
-        public Task<TranscriptionResult> TranscribeAsync(string audioPath, string language = "fr", CancellationToken cancellationToken = default)
+        public Task<TranscriptionResult> TranscribeAsync(string audioPath, string language = "fr",
+            Action<TranscriptionSegment>? onSegment = null, CancellationToken cancellationToken = default)
             => Task.FromResult(result);
     }
 
@@ -123,6 +131,7 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
             ingestionService ?? new RecordingIngestionService(),
             repository,
             new DocumentIngestionStatusUpdater(repository, new FakeUnitOfWork(), notifier ?? new FakeIngestionNotifier()),
+            new NoOpIngestionProgressReporter(),
             NullLogger<ProcessVideoTranscriptionJobHandler>.Instance);
 
     /// <summary>Faux service d'ingestion qui enregistre s'il a été appelé, pour vérifier le respect de IndexInRag.</summary>
@@ -241,7 +250,8 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
 
     private sealed class ThrowingTranscriptionService(Exception exception) : ITranscriptionService
     {
-        public Task<TranscriptionResult> TranscribeAsync(string audioPath, string language = "fr", CancellationToken cancellationToken = default)
+        public Task<TranscriptionResult> TranscribeAsync(string audioPath, string language = "fr",
+            Action<TranscriptionSegment>? onSegment = null, CancellationToken cancellationToken = default)
             => Task.FromException<TranscriptionResult>(exception);
     }
 
@@ -285,5 +295,15 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
             => throw new InvalidOperationException("L'extraction audio ne doit pas être appelée pour un fichier déjà audio.");
 
         public bool IsSupported(string filePath) => true;
+
+        public Task<TimeSpan?> TryGetMediaDurationAsync(string path, CancellationToken cancellationToken = default)
+            => Task.FromResult<TimeSpan?>(null);
+    }
+
+    private sealed class NoOpIngestionProgressReporter : IIngestionProgressReporter
+    {
+        public Task EnterStageAsync(Guid documentId, IngestionStage stage, CancellationToken ct = default) => Task.CompletedTask;
+        public Task ReportAsync(Guid documentId, IngestionStage stage, int? percent, IngestionProgressCounters counters, CancellationToken ct = default) => Task.CompletedTask;
+        public Task ClearAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
     }
 }

@@ -268,7 +268,6 @@ export default function DocumentsPage() {
               <tr
                 key={doc.id}
                 className={selected.has(doc.id) ? 'row-selected' : ''}
-                onClick={() => toggleSelect(doc.id)}
               >
                 <td className="col-check" onClick={e => e.stopPropagation()}>
                   <input
@@ -277,10 +276,14 @@ export default function DocumentsPage() {
                     onChange={() => toggleSelect(doc.id)}
                   />
                 </td>
-                <td className="filename">{doc.fileName}</td>
+                <td className="filename filename-link" onClick={() => navigate(`/documents/${doc.id}`)}>{doc.fileName}</td>
                 <td>{formatBytes(doc.fileSizeBytes)}</td>
                 <td>
-                  <span className={`badge ${statusColor[doc.status]}`} title={doc.errorMessage ?? undefined}>
+                  <span
+                    className={`badge badge-link ${statusColor[doc.status]}`}
+                    title={doc.errorMessage ?? 'Voir le détail de l’ingestion'}
+                    onClick={() => navigate(`/documents/${doc.id}`)}
+                  >
                     {statusLabel[doc.status]}
                   </span>
                 </td>

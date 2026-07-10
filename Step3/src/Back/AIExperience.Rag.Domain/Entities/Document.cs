@@ -63,6 +63,14 @@ public class Document
     /// <summary>Collection des chunks vectorisés générés lors de l'ingestion.</summary>
     public ICollection<DocumentChunk> Chunks { get; private set; } = [];
 
+    /// <summary>
+    /// Instantané de l'avancement fin du pipeline d'ingestion (étape courante, pourcentage,
+    /// compteurs). Alimenté hors entité par le reporter de progression via une écriture ciblée ;
+    /// exposé ici en lecture seule pour l'API de détail. <c>null</c> tant qu'aucun avancement n'a
+    /// été rapporté, ou après remise à zéro en fin de traitement réussi.
+    /// </summary>
+    public Models.IngestionProgress? IngestionProgress { get; private set; }
+
     private Document() { }
 
     /// <summary>

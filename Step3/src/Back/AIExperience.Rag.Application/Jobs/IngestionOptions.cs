@@ -28,4 +28,16 @@ public sealed class IngestionOptions
     /// marqué en erreur), qui ne sont jamais retentés puisque la commande a déjà fait son travail.
     /// </summary>
     public int MaxRetryAttempts { get; set; } = 5;
+
+    /// <summary>
+    /// Taille des sous-lots d'embedding. Découper l'appel d'embedding en sous-lots permet de
+    /// rapporter un avancement fin (« lot 3/8 ») plutôt qu'un unique appel opaque. Défaut prudent.
+    /// </summary>
+    public int EmbeddingBatchSize { get; set; } = 16;
+
+    /// <summary>
+    /// Intervalle minimal, en secondes, entre deux persistances d'avancement fin en base. Les ticks
+    /// intermédiaires sont poussés en temps réel (SignalR) mais pas écrits, pour ne pas marteler la base.
+    /// </summary>
+    public double ProgressPersistThrottleSeconds { get; set; } = 1.5;
 }

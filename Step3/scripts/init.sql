@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS documents (
     metadata_page_count  INTEGER      NOT NULL DEFAULT 0,
     metadata_language    VARCHAR(10)  NOT NULL DEFAULT 'fr',
     metadata_tags        JSONB        NOT NULL DEFAULT '[]',
+    -- Avancement fin d'ingestion (étape courante, pourcentage, compteurs) ; NULL hors traitement.
+    ingestion_progress   JSONB        NULL,
     created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ  NOT NULL DEFAULT now()
 );

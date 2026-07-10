@@ -3,6 +3,7 @@ using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
+using AIExperience.Rag.Domain.Models;
 using FluentAssertions;
 
 namespace AIExperience.Tests;
@@ -57,6 +58,9 @@ public sealed class DocumentIngestionStatusUpdaterTests
             Notifications.Add((documentId, status, errorMessage));
             return Task.CompletedTask;
         }
+
+        public Task NotifyProgressAsync(Guid documentId, IngestionProgress progress, CancellationToken ct = default)
+            => Task.CompletedTask;
     }
 
     private static Document CreateDocument()
@@ -142,5 +146,8 @@ public sealed class DocumentIngestionStatusUpdaterTests
             order.Add("notify");
             return Task.CompletedTask;
         }
+
+        public Task NotifyProgressAsync(Guid documentId, IngestionProgress progress, CancellationToken ct = default)
+            => Task.CompletedTask;
     }
 }

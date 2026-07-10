@@ -1,3 +1,5 @@
+using AIExperience.Rag.Domain.Models;
+
 namespace AIExperience.Rag.Domain.Interfaces.Services;
 
 /// <summary>
@@ -14,4 +16,10 @@ public interface IIngestionNotifier
     /// <param name="errorMessage">Message d'erreur si le traitement a échoué, sinon <c>null</c>.</param>
     /// <param name="ct">Jeton d'annulation.</param>
     Task NotifyStatusChangedAsync(Guid documentId, string status, string? errorMessage, CancellationToken ct = default);
+
+    /// <summary>Signale l'avancement fin (étape/pourcentage/compteurs) d'une ingestion en cours.</summary>
+    /// <param name="documentId">Identifiant du document concerné.</param>
+    /// <param name="progress">Instantané d'avancement à pousser au front.</param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    Task NotifyProgressAsync(Guid documentId, IngestionProgress progress, CancellationToken ct = default);
 }

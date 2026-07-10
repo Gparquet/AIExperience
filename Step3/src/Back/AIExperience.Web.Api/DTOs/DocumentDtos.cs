@@ -9,7 +9,16 @@ public record DocumentResponse(
     long FileSizeBytes,
     string Status,
     DateTimeOffset CreatedAt,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+    IngestionProgressResponse? IngestionProgress = null);
+
+/// <summary>Compteurs de détail de l'avancement d'ingestion (voir IngestionProgressCounters).</summary>
+public record IngestionProgressCountersResponse(
+    int? BatchIndex, int? BatchCount, int? ChunksDone, int? ChunksTotal, int? SegmentsDone, int? SegmentsTotal);
+
+/// <summary>Avancement fin d'ingestion exposé au front (étape textuelle + pourcentage + compteurs).</summary>
+public record IngestionProgressResponse(
+    string Stage, int? Percent, IngestionProgressCountersResponse Counters, DateTimeOffset UpdatedAt);
 
 /// <summary>Transcription d'une vidéo/audio, consultée après coup une fois le document "Completed".</summary>
 public record VideoTranscriptionResponse(string? RawTranscription, string? CleanedTranscription);

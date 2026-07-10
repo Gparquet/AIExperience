@@ -142,7 +142,20 @@ public class DocumentsController(
     }
 
     private static DocumentResponse ToResponse(AIExperience.Rag.Domain.Entities.Document d) =>
-        new(d.Id, d.FileName, d.ContentType, d.FileSizeBytes, d.Status.ToString(), d.CreatedAt, d.ErrorMessage);
+        new(d.Id, d.FileName, d.ContentType, d.FileSizeBytes, d.Status.ToString(), d.CreatedAt, d.ErrorMessage,
+            d.IngestionProgress is null
+                ? null
+                : new IngestionProgressResponse(
+                    d.IngestionProgress.Stage.ToString(),
+                    d.IngestionProgress.Percent,
+                    new IngestionProgressCountersResponse(
+                        d.IngestionProgress.Counters.BatchIndex,
+                        d.IngestionProgress.Counters.BatchCount,
+                        d.IngestionProgress.Counters.ChunksDone,
+                        d.IngestionProgress.Counters.ChunksTotal,
+                        d.IngestionProgress.Counters.SegmentsDone,
+                        d.IngestionProgress.Counters.SegmentsTotal),
+                    d.IngestionProgress.UpdatedAt));
 
     private static string GetContentType(string fileName)
     {

@@ -32,6 +32,15 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.FileSizeBytes).HasColumnName("file_size_bytes");
         builder.Property(d => d.ContentHash).HasColumnName("content_hash").HasMaxLength(64).IsRequired();
 
+        // Avancement fin d'ingestion sérialisé en JSONB (même approche que metadata_tags).
+        // Écrit hors tracking par le reporter (UPDATE ciblé) ; lu ici pour l'API de détail.
+        builder.Property(d => d.IngestionProgress)
+            .HasColumnName("ingestion_progress")
+            .HasConversion(
+                v => v == null ? null : JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
+                v => v == null ? null : JsonSerializer.Deserialize<AIExperience.Rag.Domain.Models.IngestionProgress>(v, JsonSerializerOptions.Default))
+            .HasColumnType("jsonb");
+
         builder.OwnsOne(d => d.Metadata, metadata =>
         {
             metadata.Property(m => m.Title).HasColumnName("metadata_title").HasMaxLength(500);

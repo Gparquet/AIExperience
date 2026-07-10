@@ -3,6 +3,7 @@ using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
+using AIExperience.Rag.Domain.Models;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -75,6 +76,9 @@ public sealed class IngestDocumentHandlerTests
             NotifiedStatuses.Add(status);
             return Task.CompletedTask;
         }
+
+        public Task NotifyProgressAsync(Guid documentId, IngestionProgress progress, CancellationToken ct = default)
+            => Task.CompletedTask;
     }
 
     /// <summary>Faux service d'ingestion dont le comportement (succès/échec/annulation) est configurable par le test.</summary>
@@ -111,10 +115,18 @@ public sealed class IngestDocumentHandlerTests
         return document;
     }
 
+    private sealed class NoOpIngestionProgressReporter : IIngestionProgressReporter
+    {
+        public Task EnterStageAsync(Guid documentId, IngestionStage stage, CancellationToken ct = default) => Task.CompletedTask;
+        public Task ReportAsync(Guid documentId, IngestionStage stage, int? percent, IngestionProgressCounters counters, CancellationToken ct = default) => Task.CompletedTask;
+        public Task ClearAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
     private static IngestDocumentHandler CreateHandler(
         FakeDocumentRepository repository, IIngestionService ingestionService, IIngestionNotifier? notifier = null)
         => new(ingestionService, repository,
             new DocumentIngestionStatusUpdater(repository, new FakeUnitOfWork(), notifier ?? new FakeIngestionNotifier()),
+            new NoOpIngestionProgressReporter(),
             NullLogger<IngestDocumentHandler>.Instance);
 
     [Fact]

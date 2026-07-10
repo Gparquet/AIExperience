@@ -53,4 +53,19 @@ public sealed class FFmpegVideoProcessorService : IVideoProcessorService
         var ext = Path.GetExtension(filePath).ToLowerInvariant();
         return SupportedVideoExtensions.Contains(ext);
     }
+
+    /// <inheritdoc/>
+    public async Task<TimeSpan?> TryGetMediaDurationAsync(string path, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var info = await FFProbe.AnalyseAsync(path, cancellationToken: cancellationToken);
+            return info.Duration > TimeSpan.Zero ? info.Duration : null;
+        }
+        catch
+        {
+            // Best-effort : la durée n'est qu'un confort d'affichage (pourcentage), pas une donnée critique.
+            return null;
+        }
+    }
 }

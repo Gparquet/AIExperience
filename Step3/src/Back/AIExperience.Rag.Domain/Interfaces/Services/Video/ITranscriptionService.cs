@@ -14,11 +14,16 @@ namespace AIExperience.Rag.Domain.Interfaces.Services.Video
         /// </summary>
         /// <param name="audioPath">Chemin vers le fichier audio WAV 16kHz mono</param>
         /// <param name="language">Code langue ISO (ex: "fr" pour français)</param>
+        /// <param name="onSegment">
+        /// Rappelé à chaque segment transcrit, pour rapporter l'avancement en temps réel ;
+        /// <c>null</c> pour ne rien rapporter.
+        /// </param>
         /// <param name="cancellationToken">Token d'annulation</param>
         /// <returns>Liste de segments transcrits avec leurs timestamps</returns>
         Task<TranscriptionResult> TranscribeAsync(
             string audioPath,
             string language = "fr",
+            Action<TranscriptionSegment>? onSegment = null,
             CancellationToken cancellationToken = default);
     }
 }
