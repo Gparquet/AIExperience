@@ -59,3 +59,10 @@ nunit-*.xml
 # Visual Studio cache/options directory
 .vs/
 /models
+
+# Données générées à l'exécution : fichiers uploadés et fichiers de travail
+# d'ingestion (WorkDirectory = App_Data/ingestion-work), quel que soit le projet.
+# Motif non ancré (slash uniquement en fin) → s'applique à tout dossier App_Data
+# à n'importe quelle profondeur. Le dossier est recréé automatiquement au runtime
+# par WorkFileStore (Directory.CreateDirectory), inutile donc de le versionner.
+App_Data/
