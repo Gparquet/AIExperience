@@ -1,14 +1,15 @@
 ﻿using AIExperience.Rag.Application;
+using AIExperience.Rag.Application.Common;
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Application.Document.Command;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Rag.Domain.Interfaces.Services.AI;
 using AIExperience.Rag.Infrastructure;
-using MediatR;
-using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 var builder = Host.CreateApplicationBuilder(args);
 var services = builder.Services;
@@ -23,12 +24,13 @@ services
 var app = builder.Build();
 
 var ingestionService = app.Services.GetRequiredService<IIngestionService>();
-var senderService = app.Services.GetRequiredService<ISender>();
+var dispatcher = app.Services.GetRequiredService<ICommandDispatcher>();
 var ragPipelineService = app.Services.GetRequiredService<IRagPipelineService>();
 var documentRepository = app.Services.GetRequiredService<IDocumentRepository>();
+var contentTypeResolver = app.Services.GetRequiredService<IContentTypeResolver>();
 
 var ingestedDocumentIds = new List<Guid>();
-const string UserId = "1ea95468-3f27-4a6d-8fb3-25fdd1530023";
+var UserId = app.Services.GetRequiredService<IOptions<DevAuthOptions>>().Value.DefaultUserId;
 
 Console.WriteLine("=== Exemple RAG ===");
 
@@ -92,24 +94,22 @@ async Task IngestDocumentsAsync()
         try
         {
             var fileInfo = new FileInfo(filePath);
+            var metadata = new DocumentMetadata { Title = fileInfo.Name };
 
-            var uploadDocumentResponse = await senderService.Send(new UploadDocumentCommand
+            var uploadDocumentResponse = await dispatcher.SendAsync(new UploadDocumentCommand
             {
                 FileName = fileInfo.Name,
-                ContentType = GetContentTypeOfFileName(fileInfo.Name),
+                ContentType = contentTypeResolver.Resolve(fileInfo.Name),
                 FileSizeBytes = fileInfo.Length,
                 UserId = UserId,
-                DocumentMetadata = new DocumentMetadata { Title = fileInfo.Name },
+                DocumentMetadata = metadata,
                 ChunkingStrategy = ChunkingStrategy.Recursive,
                 FilePath = filePath
             });
 
             if (uploadDocumentResponse.Status == IngestionStatus.Completed)
             {
-                await ingestionService.IngestAsync(filePath, uploadDocumentResponse.DocumentId, new DocumentMetadata
-                {
-                    Title = fileInfo.Name,
-                });
+                await ingestionService.IngestAsync(filePath, uploadDocumentResponse.DocumentId, metadata);
                 ingestedCount++;
                 ingestedDocumentIds.Add(uploadDocumentResponse.DocumentId);
                 Console.WriteLine($"  ✔ {fileInfo.Name} ingéré.");
@@ -215,12 +215,4 @@ async Task AskQuestionAsync()
     {
         Console.WriteLine($"Erreur lors de la question : {ex.Message}");
     }
-}
-
-string GetContentTypeOfFileName(string name)
-{
-    var provider = new FileExtensionContentTypeProvider();
-    if (!provider.TryGetContentType(name, out var contentType))
-        contentType = "application/octet-stream";
-    return contentType;
 }

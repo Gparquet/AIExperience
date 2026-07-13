@@ -1,13 +1,14 @@
+using AIExperience.Rag.Application.Common;
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Application.Document.Command;
 using AIExperience.Rag.Application.Document.Exceptions;
 using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
+using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Web.Api.DTOs;
 using AIExperience.Web.Api.Helpers;
-using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Options;
 
 namespace AIExperience.Web.Api.Controllers;
@@ -15,13 +16,13 @@ namespace AIExperience.Web.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 public class DocumentsController(
-    ISender sender,
+    ICommandDispatcher dispatcher,
     IDocumentRepository documentRepository,
     IngestionSignal ingestionSignal,
-    IOptions<IngestionOptions> ingestionOptions) : ControllerBase
+    IOptions<IngestionOptions> ingestionOptions,
+    IOptions<DevAuthOptions> devAuthOptions,
+    IContentTypeResolver contentTypeResolver) : ControllerBase
 {
-    private const string DefaultUserId = "1ea95468-3f27-4a6d-8fb3-25fdd1530023";
-
     [HttpGet]
     public async Task<ActionResult<IEnumerable<DocumentResponse>>> GetAll()
     {
@@ -45,7 +46,7 @@ public class DocumentsController(
     public async Task<ActionResult<CheckDuplicateResponse>> CheckDuplicate([FromBody] CheckDuplicateRequest request)
     {
         // Recherche le document le plus récent portant le même nom pour cet utilisateur
-        var existing = await documentRepository.GetLatestByFileNameAsync(DefaultUserId, request.FileName);
+        var existing = await documentRepository.GetLatestByFileNameAsync(devAuthOptions.Value.DefaultUserId, request.FileName);
         if (existing is null)
             return Ok(new CheckDuplicateResponse(false, null, null));
 
@@ -79,18 +80,18 @@ public class DocumentsController(
 
         var documentId = Guid.NewGuid();
         var filePath = await WorkFileStore.SaveAsync(file, documentId, ingestionOptions.Value.WorkDirectory, cancellationToken);
-        var contentType = GetContentType(file.FileName);
+        var contentType = contentTypeResolver.Resolve(file.FileName);
 
         UploadDocumentResponse uploadResponse;
         try
         {
-            uploadResponse = await sender.Send(new UploadDocumentCommand
+            uploadResponse = await dispatcher.SendAsync(new UploadDocumentCommand
             {
                 Id = documentId,
                 FileName = file.FileName,
                 ContentType = contentType,
                 FileSizeBytes = file.Length,
-                UserId = DefaultUserId,
+                UserId = devAuthOptions.Value.DefaultUserId,
                 DocumentMetadata = new DocumentMetadata { Title = file.FileName, Language = language },
                 ChunkingStrategy = strategy,
                 FilePath = filePath,
@@ -125,7 +126,7 @@ public class DocumentsController(
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var deleted = await sender.Send(new DeleteDocumentCommand { DocumentId = id });
+        var deleted = await dispatcher.SendAsync(new DeleteDocumentCommand { DocumentId = id });
         return deleted ? NoContent() : NotFound();
     }
 
@@ -137,7 +138,7 @@ public class DocumentsController(
     [HttpPost("reembed-corpus")]
     public async Task<ActionResult<ReembedCorpusResponse>> ReembedCorpus(CancellationToken cancellationToken)
     {
-        var result = await sender.Send(new ReembedCorpusCommand(), cancellationToken);
+        var result = await dispatcher.SendAsync(new ReembedCorpusCommand(), cancellationToken);
         return Ok(new ReembedCorpusResponse(result.ChunksReembedded, result.DurationMs));
     }
 
@@ -156,10 +157,4 @@ public class DocumentsController(
                         d.IngestionProgress.Counters.SegmentsDone,
                         d.IngestionProgress.Counters.SegmentsTotal),
                     d.IngestionProgress.UpdatedAt));
-
-    private static string GetContentType(string fileName)
-    {
-        var provider = new FileExtensionContentTypeProvider();
-        return provider.TryGetContentType(fileName, out var ct) ? ct : "application/octet-stream";
-    }
 }

@@ -164,7 +164,7 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
         var document = CreateVideoDocument(repository);
         var handler = CreateHandler(repository, transcriptionService: new FakeTranscriptionService(CreateResult("texte transcrit")));
 
-        var response = await handler.Handle(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
+        var response = await handler.HandleAsync(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
 
         response.Status.Should().Be(IngestionStatus.Completed);
         document.RawTranscription.Should().Be("texte transcrit");
@@ -178,7 +178,7 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
         var notifier = new FakeIngestionNotifier();
         var handler = CreateHandler(repository, notifier: notifier);
 
-        await handler.Handle(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
+        await handler.HandleAsync(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
 
         notifier.NotifiedStatuses.Should().Equal("Processing", "Completed");
     }
@@ -191,7 +191,7 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
         var ingestionService = new RecordingIngestionService();
         var handler = CreateHandler(repository, ingestionService: ingestionService);
 
-        await handler.Handle(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
+        await handler.HandleAsync(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
 
         ingestionService.IngestFromSegmentsCalled.Should().BeTrue();
     }
@@ -204,7 +204,7 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
         var ingestionService = new RecordingIngestionService();
         var handler = CreateHandler(repository, ingestionService: ingestionService);
 
-        var response = await handler.Handle(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
+        var response = await handler.HandleAsync(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
 
         ingestionService.IngestFromSegmentsCalled.Should().BeFalse();
         response.Status.Should().Be(IngestionStatus.Completed, "une transcription sans indexation reste un succès");
@@ -217,7 +217,7 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
         var document = CreateVideoDocument(repository, cleanWithLlm: false);
         var handler = CreateHandler(repository);
 
-        await handler.Handle(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
+        await handler.HandleAsync(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
 
         document.CleanedTranscription.Should().BeNull();
     }
@@ -229,7 +229,7 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
         var document = CreateVideoDocument(repository, cleanWithLlm: true);
         var handler = CreateHandler(repository, chatClient: new FakeChatClient("version nettoyée"));
 
-        await handler.Handle(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
+        await handler.HandleAsync(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
 
         document.CleanedTranscription.Should().Be("version nettoyée");
     }
@@ -242,7 +242,7 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
         var handler = CreateHandler(repository,
             transcriptionService: new ThrowingTranscriptionService(new InvalidOperationException("modèle Whisper introuvable sur disque")));
 
-        var response = await handler.Handle(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
+        var response = await handler.HandleAsync(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
 
         response.Status.Should().Be(IngestionStatus.Failed);
         document.ErrorMessage.Should().NotContain("Whisper introuvable sur disque");
@@ -263,7 +263,7 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
         var handler = CreateHandler(repository,
             transcriptionService: new ThrowingTranscriptionService(new OperationCanceledException()));
 
-        var act = () => handler.Handle(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
+        var act = () => handler.HandleAsync(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
         document.Status.Should().Be(IngestionStatus.Processing);
@@ -284,7 +284,7 @@ public sealed class ProcessVideoTranscriptionJobHandlerTests
         var videoProcessor = new ThrowingIfCalledVideoProcessorService();
         var handler = CreateHandler(repository, videoProcessor: videoProcessor);
 
-        var response = await handler.Handle(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
+        var response = await handler.HandleAsync(new ProcessVideoTranscriptionJobCommand { DocumentId = document.Id }, CancellationToken.None);
 
         response.Status.Should().Be(IngestionStatus.Completed);
     }

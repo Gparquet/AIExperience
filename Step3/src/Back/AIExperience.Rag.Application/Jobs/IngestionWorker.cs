@@ -1,7 +1,7 @@
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
-using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -12,7 +12,7 @@ namespace AIExperience.Rag.Application.Jobs;
 
 /// <summary>
 /// Consomme en continu la table outbox et déclenche, pour chaque message non traité, la commande
-/// MediatR correspondante — ingestion de document ou transcription vidéo. Tourne dans le même
+/// correspondante — ingestion de document ou transcription vidéo. Tourne dans le même
 /// process que l'API : un redémarrage retrouve naturellement tout message resté non traité au
 /// prochain tour de sonde, sans code de reprise dédié — c'est la sonde elle-même qui joue ce rôle.
 /// </summary>
@@ -71,7 +71,7 @@ public sealed class IngestionWorker(
         await using var scope = scopeFactory.CreateAsyncScope();
         var outboxRepository = scope.ServiceProvider.GetRequiredService<IOutboxRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var sender = scope.ServiceProvider.GetRequiredService<ISender>();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher>();
 
         try
         {
@@ -81,10 +81,10 @@ public sealed class IngestionWorker(
             switch (message.EventType)
             {
                 case IngestionEventTypes.DocumentIngestionRequested:
-                    await sender.Send(new Document.Command.IngestDocumentCommand { DocumentId = payload.DocumentId }, ct);
+                    await dispatcher.SendAsync(new Document.Command.IngestDocumentCommand { DocumentId = payload.DocumentId }, ct);
                     break;
                 case IngestionEventTypes.VideoTranscriptionRequested:
-                    await sender.Send(new Video.Command.ProcessVideoTranscriptionJobCommand { DocumentId = payload.DocumentId }, ct);
+                    await dispatcher.SendAsync(new Video.Command.ProcessVideoTranscriptionJobCommand { DocumentId = payload.DocumentId }, ct);
                     break;
                 default:
                     logger.LogWarning("Type d'événement outbox inconnu, ignoré : {EventType}", message.EventType);

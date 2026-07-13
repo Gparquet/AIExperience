@@ -1,9 +1,11 @@
+using AIExperience.Rag.Application.Common;
 using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Application.Video.Command;
 using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using FluentAssertions;
+using Microsoft.Extensions.Options;
 
 namespace AIExperience.Tests;
 
@@ -13,6 +15,9 @@ namespace AIExperience.Tests;
 /// </summary>
 public sealed class CreateVideoTranscriptionJobHandlerTests
 {
+    private static readonly IOptions<DevAuthOptions> DevAuthOptions =
+        Options.Create(new DevAuthOptions { DefaultUserId = "1ea95468-3f27-4a6d-8fb3-25fdd1530023" });
+
     private sealed class FakeDocumentRepository : IDocumentRepository
     {
         public List<Document> Documents { get; } = [];
@@ -73,9 +78,9 @@ public sealed class CreateVideoTranscriptionJobHandlerTests
     public async Task Handle_CreatesDocumentWithRequestedOptions()
     {
         var repository = new FakeDocumentRepository();
-        var handler = new CreateVideoTranscriptionJobHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork());
+        var handler = new CreateVideoTranscriptionJobHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), DevAuthOptions);
 
-        var response = await handler.Handle(CreateCommand(), CancellationToken.None);
+        var response = await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         var document = repository.Documents.Single(d => d.Id == response.DocumentId);
         document.Metadata.Language.Should().Be("en");
@@ -89,9 +94,9 @@ public sealed class CreateVideoTranscriptionJobHandlerTests
     public async Task Handle_WithoutExplicitTitle_UsesFileNameWithoutExtension()
     {
         var repository = new FakeDocumentRepository();
-        var handler = new CreateVideoTranscriptionJobHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork());
+        var handler = new CreateVideoTranscriptionJobHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), DevAuthOptions);
 
-        var response = await handler.Handle(CreateCommand() with { Title = null }, CancellationToken.None);
+        var response = await handler.HandleAsync(CreateCommand() with { Title = null }, CancellationToken.None);
 
         repository.Documents.Single(d => d.Id == response.DocumentId).Metadata.Title.Should().Be("reunion");
     }
@@ -101,9 +106,9 @@ public sealed class CreateVideoTranscriptionJobHandlerTests
     {
         var repository = new FakeDocumentRepository();
         var outbox = new FakeOutboxRepository();
-        var handler = new CreateVideoTranscriptionJobHandler(repository, outbox, new FakeUnitOfWork());
+        var handler = new CreateVideoTranscriptionJobHandler(repository, outbox, new FakeUnitOfWork(), DevAuthOptions);
 
-        var response = await handler.Handle(CreateCommand(), CancellationToken.None);
+        var response = await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         outbox.Messages.Should().ContainSingle(m =>
             m.EventType == IngestionEventTypes.VideoTranscriptionRequested && m.Payload.Contains(response.DocumentId.ToString()));
@@ -114,9 +119,9 @@ public sealed class CreateVideoTranscriptionJobHandlerTests
     {
         var repository = new FakeDocumentRepository();
         var unitOfWork = new FakeUnitOfWork();
-        var handler = new CreateVideoTranscriptionJobHandler(repository, new FakeOutboxRepository(), unitOfWork);
+        var handler = new CreateVideoTranscriptionJobHandler(repository, new FakeOutboxRepository(), unitOfWork, DevAuthOptions);
 
-        await handler.Handle(CreateCommand(), CancellationToken.None);
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         unitOfWork.SaveChangesCallCount.Should().Be(1, "création du document et mise en file doivent être atomiques");
     }

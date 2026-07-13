@@ -136,7 +136,7 @@ public sealed class IngestDocumentHandlerTests
         var document = CreateStoredDocument(repository);
         var handler = CreateHandler(repository, new FakeIngestionService());
 
-        var response = await handler.Handle(new IngestDocumentCommand { DocumentId = document.Id }, CancellationToken.None);
+        var response = await handler.HandleAsync(new IngestDocumentCommand { DocumentId = document.Id }, CancellationToken.None);
 
         response.Status.Should().Be(IngestionStatus.Completed);
         document.Status.Should().Be(IngestionStatus.Completed);
@@ -150,7 +150,7 @@ public sealed class IngestDocumentHandlerTests
         var notifier = new FakeIngestionNotifier();
         var handler = CreateHandler(repository, new FakeIngestionService(), notifier);
 
-        await handler.Handle(new IngestDocumentCommand { DocumentId = document.Id }, CancellationToken.None);
+        await handler.HandleAsync(new IngestDocumentCommand { DocumentId = document.Id }, CancellationToken.None);
 
         notifier.NotifiedStatuses.Should().Equal("Processing", "Completed");
     }
@@ -163,7 +163,7 @@ public sealed class IngestDocumentHandlerTests
         var handler = CreateHandler(repository,
             new FakeIngestionService(new InvalidOperationException("Npgsql: connexion refusée sur host interne 10.0.0.5")));
 
-        var response = await handler.Handle(new IngestDocumentCommand { DocumentId = document.Id }, CancellationToken.None);
+        var response = await handler.HandleAsync(new IngestDocumentCommand { DocumentId = document.Id }, CancellationToken.None);
 
         response.Status.Should().Be(IngestionStatus.Failed);
         document.Status.Should().Be(IngestionStatus.Failed);
@@ -178,7 +178,7 @@ public sealed class IngestDocumentHandlerTests
         var document = CreateStoredDocument(repository);
         var handler = CreateHandler(repository, new FakeIngestionService(new OperationCanceledException()));
 
-        var act = () => handler.Handle(new IngestDocumentCommand { DocumentId = document.Id }, CancellationToken.None);
+        var act = () => handler.HandleAsync(new IngestDocumentCommand { DocumentId = document.Id }, CancellationToken.None);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
         // Le passage à Processing a bien lieu avant la tentative d'ingestion (corrige le bug où le
@@ -193,7 +193,7 @@ public sealed class IngestDocumentHandlerTests
         var document = CreateStoredDocument(repository);
         var handler = CreateHandler(repository, new FakeIngestionService(new OperationCanceledException()));
 
-        var act = () => handler.Handle(new IngestDocumentCommand { DocumentId = document.Id }, CancellationToken.None);
+        var act = () => handler.HandleAsync(new IngestDocumentCommand { DocumentId = document.Id }, CancellationToken.None);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
         File.Exists(document.FileReference).Should().BeTrue("le fichier doit rester disponible pour une reprise après annulation");
@@ -207,7 +207,7 @@ public sealed class IngestDocumentHandlerTests
         var repository = new FakeDocumentRepository();
         var handler = CreateHandler(repository, new FakeIngestionService());
 
-        var act = () => handler.Handle(new IngestDocumentCommand { DocumentId = Guid.NewGuid() }, CancellationToken.None);
+        var act = () => handler.HandleAsync(new IngestDocumentCommand { DocumentId = Guid.NewGuid() }, CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidOperationException>();
     }

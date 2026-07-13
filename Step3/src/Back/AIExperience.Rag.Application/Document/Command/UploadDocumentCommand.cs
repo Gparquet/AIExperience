@@ -1,9 +1,9 @@
-﻿using AIExperience.Rag.Domain.Enums;
-using MediatR;
+﻿using AIExperience.Rag.Application.Common.Cqrs;
+using AIExperience.Rag.Domain.Enums;
 
 namespace AIExperience.Rag.Application.Document.Command;
 
-public sealed record UploadDocumentCommand : IRequest<UploadDocumentResponse>
+public sealed record UploadDocumentCommand : ICommand<UploadDocumentResponse>
 {
     public required string FileName { get; init; }
     public required string ContentType { get; init; }

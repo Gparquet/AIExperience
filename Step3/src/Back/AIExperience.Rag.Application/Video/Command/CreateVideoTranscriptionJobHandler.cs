@@ -1,9 +1,11 @@
+using AIExperience.Rag.Application.Common;
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
-using MediatR;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace AIExperience.Rag.Application.Video.Command;
@@ -17,12 +19,10 @@ namespace AIExperience.Rag.Application.Video.Command;
 public sealed class CreateVideoTranscriptionJobHandler(
     IDocumentRepository documentRepository,
     IOutboxRepository outboxRepository,
-    IUnitOfWork unitOfWork) : IRequestHandler<CreateVideoTranscriptionJobCommand, CreateVideoTranscriptionJobResponse>
+    IUnitOfWork unitOfWork,
+    IOptions<DevAuthOptions> devAuthOptions) : ICommandHandler<CreateVideoTranscriptionJobCommand, CreateVideoTranscriptionJobResponse>
 {
-    /// <summary>UserId fixe en développement — doit correspondre au DefaultUserId de DocumentsController.</summary>
-    private const string DevUserId = "1ea95468-3f27-4a6d-8fb3-25fdd1530023";
-
-    public async Task<CreateVideoTranscriptionJobResponse> Handle(CreateVideoTranscriptionJobCommand request, CancellationToken cancellationToken)
+    public async Task<CreateVideoTranscriptionJobResponse> HandleAsync(CreateVideoTranscriptionJobCommand request, CancellationToken cancellationToken)
     {
         var title = request.Title ?? Path.GetFileNameWithoutExtension(request.FileName);
         var metadata = DocumentMetadata.Create(title: title, language: request.Language);
@@ -31,7 +31,7 @@ public sealed class CreateVideoTranscriptionJobHandler(
             request.FileName,
             request.ContentType,
             request.FileSizeBytes,
-            DevUserId,
+            devAuthOptions.Value.DefaultUserId,
             metadata,
             id: request.Id,
             indexInRag: request.IndexInRag,

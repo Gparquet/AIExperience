@@ -1,11 +1,11 @@
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Application.Video.Command;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
+using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Web.Api.DTOs;
 using AIExperience.Web.Api.Helpers;
-using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Options;
 
 namespace AIExperience.Web.Api.Controllers;
@@ -18,10 +18,11 @@ namespace AIExperience.Web.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 public class VideoController(
-    ISender sender,
+    ICommandDispatcher dispatcher,
     IDocumentRepository documentRepository,
     IngestionSignal ingestionSignal,
-    IOptions<IngestionOptions> ingestionOptions) : ControllerBase
+    IOptions<IngestionOptions> ingestionOptions,
+    IContentTypeResolver contentTypeResolver) : ControllerBase
 {
     /// <summary>
     /// Reçoit le fichier, le persiste dans le répertoire de travail et met la transcription en
@@ -51,9 +52,9 @@ public class VideoController(
 
         var documentId = Guid.NewGuid();
         var filePath = await WorkFileStore.SaveAsync(file, documentId, ingestionOptions.Value.WorkDirectory, cancellationToken);
-        var contentType = GetContentType(file.FileName);
+        var contentType = contentTypeResolver.Resolve(file.FileName);
 
-        var createResponse = await sender.Send(new CreateVideoTranscriptionJobCommand
+        var createResponse = await dispatcher.SendAsync(new CreateVideoTranscriptionJobCommand
         {
             Id = documentId,
             FileName = file.FileName,
@@ -88,11 +89,5 @@ public class VideoController(
         if (document is null) return NotFound();
 
         return Ok(new VideoTranscriptionResponse(document.RawTranscription, document.CleanedTranscription));
-    }
-
-    private static string GetContentType(string fileName)
-    {
-        var provider = new FileExtensionContentTypeProvider();
-        return provider.TryGetContentType(fileName, out var ct) ? ct : "application/octet-stream";
     }
 }

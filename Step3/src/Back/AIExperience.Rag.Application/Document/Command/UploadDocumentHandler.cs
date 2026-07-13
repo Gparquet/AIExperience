@@ -1,16 +1,16 @@
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Application.Document.Exceptions;
 using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
-using MediatR;
 using System.Text.Json;
 
 namespace AIExperience.Rag.Application.Document.Command;
 
 /// <summary>
-/// Handler MediatR pour la commande <see cref="UploadDocumentCommand"/>.
+/// Handler pour la commande <see cref="UploadDocumentCommand"/>.
 /// Compare le fichier uploadé au document le plus récent portant le même nom : bloque la création
 /// si aucun remplacement n'a été confirmé (doublon exact ou nouvelle version détectée), ou supprime
 /// l'ancien document et crée le nouveau de façon atomique (une seule transaction) si confirmé.
@@ -22,7 +22,7 @@ public sealed class UploadDocumentHandler(
     IDocumentRepository documentRepository,
     IOutboxRepository outboxRepository,
     IUnitOfWork unitOfWork,
-    IFileHashService fileHashService) : IRequestHandler<UploadDocumentCommand, UploadDocumentResponse>
+    IFileHashService fileHashService) : ICommandHandler<UploadDocumentCommand, UploadDocumentResponse>
 {
     /// <summary>
     /// Calcule le hash du fichier puis exécute la détection de doublon/nouvelle version et la création
@@ -32,7 +32,7 @@ public sealed class UploadDocumentHandler(
     /// <param name="cancellationToken">Jeton d'annulation.</param>
     /// <returns>Réponse contenant l'identifiant et le statut initial du document.</returns>
     /// <exception cref="DuplicateDocumentException">Un document de même nom existe déjà et n'a pas été confirmé comme remplaçable.</exception>
-    public async Task<UploadDocumentResponse> Handle(UploadDocumentCommand request, CancellationToken cancellationToken)
+    public async Task<UploadDocumentResponse> HandleAsync(UploadDocumentCommand request, CancellationToken cancellationToken)
     {
         var contentHash = await fileHashService.ComputeSha256Async(request.FilePath, cancellationToken);
 

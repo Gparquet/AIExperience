@@ -22,6 +22,7 @@ Un ADR fige le *pourquoi* d'un choix à un instant donné. Il ne se modifie pas 
 | [009](009-trois-modes-restitution-rag.md) | Trois modes de restitution (Full-text / LLM direct / RAG complet) | Accepté |
 | [010](010-schema-postgres-scripts-sql.md) | Schéma PostgreSQL par scripts SQL manuels (pas de migrations EF Core) | Accepté (réserves) |
 | [011](011-extraction-texte-multi-format-composite.md) | Extraction de texte multi-format via extracteur composite | Accepté |
+| [012](012-cqrs-maison-composition.md) | Remplacement de MediatR par un CQRS maison basé sur la composition | Accepté |
 
 ## Fils conducteurs
 

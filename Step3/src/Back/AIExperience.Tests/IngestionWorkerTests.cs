@@ -1,3 +1,4 @@
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Application.Document.Command;
 using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Application.Video.Command;
@@ -5,7 +6,6 @@ using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using FluentAssertions;
-using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -37,37 +37,19 @@ public sealed class IngestionWorkerTests
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
     }
 
-    /// <summary>Faux ISender qui enregistre les commandes reçues et peut être configuré pour échouer.</summary>
-    private sealed class FakeSender : ISender
+    /// <summary>Faux ICommandDispatcher qui enregistre les commandes reçues et peut être configuré pour échouer.</summary>
+    private sealed class FakeDispatcher : ICommandDispatcher
     {
         public List<object> SentRequests { get; } = [];
         public Exception? ExceptionToThrow { get; set; }
 
-        public Task<TResponse> Send<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
+        public Task<TResponse> SendAsync<TResponse>(ICommand<TResponse> command, CancellationToken cancellationToken = default)
         {
-            SentRequests.Add(request);
+            SentRequests.Add(command);
             return ExceptionToThrow is null
                 ? Task.FromResult(default(TResponse)!)
                 : Task.FromException<TResponse>(ExceptionToThrow);
         }
-
-        public Task Send<TRequest>(TRequest request, CancellationToken cancellationToken = default) where TRequest : IRequest
-        {
-            SentRequests.Add(request!);
-            return ExceptionToThrow is null ? Task.CompletedTask : Task.FromException(ExceptionToThrow);
-        }
-
-        public Task<object?> Send(object request, CancellationToken cancellationToken = default)
-        {
-            SentRequests.Add(request);
-            return Task.FromResult<object?>(null);
-        }
-
-        public IAsyncEnumerable<TResponse> CreateStream<TResponse>(IStreamRequest<TResponse> request, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException("Non utilisé par le worker d'ingestion.");
-
-        public IAsyncEnumerable<object?> CreateStream(object request, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException("Non utilisé par le worker d'ingestion.");
     }
 
     /// <summary>
@@ -75,16 +57,16 @@ public sealed class IngestionWorkerTests
     /// en mémoire — c'est la façon la plus simple de tester un BackgroundService sans dupliquer
     /// sa logique interne de scoping.
     /// </summary>
-    private static (IngestionWorker Worker, FakeOutboxRepository Outbox, FakeSender Sender) CreateWorker(
+    private static (IngestionWorker Worker, FakeOutboxRepository Outbox, FakeDispatcher Dispatcher) CreateWorker(
         int maxRetryAttempts = 5)
     {
         var outbox = new FakeOutboxRepository();
-        var sender = new FakeSender();
+        var dispatcher = new FakeDispatcher();
 
         var services = new ServiceCollection();
         services.AddSingleton<IOutboxRepository>(outbox);
         services.AddSingleton<IUnitOfWork>(new FakeUnitOfWork());
-        services.AddSingleton<ISender>(sender);
+        services.AddSingleton<ICommandDispatcher>(dispatcher);
         services.AddSingleton(Options.Create(new IngestionOptions
         {
             WorkDirectory = "unused",
@@ -101,7 +83,7 @@ public sealed class IngestionWorkerTests
             provider.GetRequiredService<IOptions<IngestionOptions>>(),
             NullLogger<IngestionWorker>.Instance);
 
-        return (worker, outbox, sender);
+        return (worker, outbox, dispatcher);
     }
 
     private static async Task RunOnePassAsync(IngestionWorker worker)
@@ -114,7 +96,7 @@ public sealed class IngestionWorkerTests
     [Fact]
     public async Task ExecuteAsync_DocumentIngestionMessage_SendsIngestDocumentCommand()
     {
-        var (worker, outbox, sender) = CreateWorker();
+        var (worker, outbox, dispatcher) = CreateWorker();
         var documentId = Guid.NewGuid();
         outbox.Messages.Add(OutboxMessage.Create(
             IngestionEventTypes.DocumentIngestionRequested,
@@ -122,13 +104,13 @@ public sealed class IngestionWorkerTests
 
         await RunOnePassAsync(worker);
 
-        sender.SentRequests.OfType<IngestDocumentCommand>().Should().ContainSingle(cmd => cmd.DocumentId == documentId);
+        dispatcher.SentRequests.OfType<IngestDocumentCommand>().Should().ContainSingle(cmd => cmd.DocumentId == documentId);
     }
 
     [Fact]
     public async Task ExecuteAsync_VideoTranscriptionMessage_SendsProcessVideoTranscriptionJobCommand()
     {
-        var (worker, outbox, sender) = CreateWorker();
+        var (worker, outbox, dispatcher) = CreateWorker();
         var documentId = Guid.NewGuid();
         outbox.Messages.Add(OutboxMessage.Create(
             IngestionEventTypes.VideoTranscriptionRequested,
@@ -136,7 +118,7 @@ public sealed class IngestionWorkerTests
 
         await RunOnePassAsync(worker);
 
-        sender.SentRequests.OfType<ProcessVideoTranscriptionJobCommand>().Should().ContainSingle(cmd => cmd.DocumentId == documentId);
+        dispatcher.SentRequests.OfType<ProcessVideoTranscriptionJobCommand>().Should().ContainSingle(cmd => cmd.DocumentId == documentId);
     }
 
     [Fact]
@@ -156,8 +138,8 @@ public sealed class IngestionWorkerTests
     [Fact]
     public async Task ExecuteAsync_SendThrows_RecordsFailedAttemptWithoutMarkingProcessedBelowThreshold()
     {
-        var (worker, outbox, sender) = CreateWorker(maxRetryAttempts: 5);
-        sender.ExceptionToThrow = new InvalidOperationException("base de données momentanément indisponible");
+        var (worker, outbox, dispatcher) = CreateWorker(maxRetryAttempts: 5);
+        dispatcher.ExceptionToThrow = new InvalidOperationException("base de données momentanément indisponible");
         var message = OutboxMessage.Create(
             IngestionEventTypes.DocumentIngestionRequested,
             System.Text.Json.JsonSerializer.Serialize(new IngestionJobPayload { DocumentId = Guid.NewGuid() }));
@@ -172,8 +154,8 @@ public sealed class IngestionWorkerTests
     [Fact]
     public async Task ExecuteAsync_SendThrowsRepeatedly_GivesUpAfterMaxRetryAttempts()
     {
-        var (worker, outbox, sender) = CreateWorker(maxRetryAttempts: 2);
-        sender.ExceptionToThrow = new InvalidOperationException("payload systématiquement invalide");
+        var (worker, outbox, dispatcher) = CreateWorker(maxRetryAttempts: 2);
+        dispatcher.ExceptionToThrow = new InvalidOperationException("payload systématiquement invalide");
         var message = OutboxMessage.Create(
             IngestionEventTypes.DocumentIngestionRequested,
             System.Text.Json.JsonSerializer.Serialize(new IngestionJobPayload { DocumentId = Guid.NewGuid() }));
@@ -189,7 +171,7 @@ public sealed class IngestionWorkerTests
     [Fact]
     public async Task ExecuteAsync_AlreadyProcessedMessage_IsNotResent()
     {
-        var (worker, outbox, sender) = CreateWorker();
+        var (worker, outbox, dispatcher) = CreateWorker();
         var message = OutboxMessage.Create(
             IngestionEventTypes.DocumentIngestionRequested,
             System.Text.Json.JsonSerializer.Serialize(new IngestionJobPayload { DocumentId = Guid.NewGuid() }));
@@ -198,6 +180,6 @@ public sealed class IngestionWorkerTests
 
         await RunOnePassAsync(worker);
 
-        sender.SentRequests.Should().BeEmpty();
+        dispatcher.SentRequests.Should().BeEmpty();
     }
 }

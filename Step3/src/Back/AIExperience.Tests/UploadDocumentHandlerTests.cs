@@ -105,7 +105,7 @@ public sealed class UploadDocumentHandlerTests
         var unitOfWork = new FakeUnitOfWork();
         var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), unitOfWork, new FakeFileHashService("hash-a"));
 
-        var response = await handler.Handle(CreateCommand(), CancellationToken.None);
+        var response = await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         repository.Documents.Should().ContainSingle(d => d.Id == response.DocumentId);
         unitOfWork.SaveChangesCallCount.Should().Be(1);
@@ -118,7 +118,7 @@ public sealed class UploadDocumentHandlerTests
         var outbox = new FakeOutboxRepository();
         var handler = new UploadDocumentHandler(repository, outbox, new FakeUnitOfWork(), new FakeFileHashService("hash-a"));
 
-        var response = await handler.Handle(CreateCommand(), CancellationToken.None);
+        var response = await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         outbox.Messages.Should().ContainSingle(m =>
             m.EventType == IngestionEventTypes.DocumentIngestionRequested && m.Payload.Contains(response.DocumentId.ToString()));
@@ -130,7 +130,7 @@ public sealed class UploadDocumentHandlerTests
         var repository = new FakeDocumentRepository();
         var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), new FakeFileHashService("hash-a"));
 
-        var response = await handler.Handle(CreateCommand(), CancellationToken.None);
+        var response = await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         repository.Documents.Single(d => d.Id == response.DocumentId).FileReference.Should().Be("fake/rapport.pdf");
     }
@@ -144,7 +144,7 @@ public sealed class UploadDocumentHandlerTests
         repository.Documents.Add(existing);
         var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), new FakeFileHashService("hash-a"));
 
-        var act = () => handler.Handle(CreateCommand(), CancellationToken.None);
+        var act = () => handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         var exception = await act.Should().ThrowAsync<DuplicateDocumentException>();
         exception.Which.ExistingDocumentId.Should().Be(existing.Id);
@@ -161,7 +161,7 @@ public sealed class UploadDocumentHandlerTests
         repository.Documents.Add(existing);
         var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), new FakeFileHashService("hash-new"));
 
-        var act = () => handler.Handle(CreateCommand(), CancellationToken.None);
+        var act = () => handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         var exception = await act.Should().ThrowAsync<DuplicateDocumentException>();
         exception.Which.ExistingDocumentId.Should().Be(existing.Id);
@@ -179,7 +179,7 @@ public sealed class UploadDocumentHandlerTests
         var unitOfWork = new FakeUnitOfWork();
         var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), unitOfWork, new FakeFileHashService("hash-a"));
 
-        var response = await handler.Handle(CreateCommand(existing.Id), CancellationToken.None);
+        var response = await handler.HandleAsync(CreateCommand(existing.Id), CancellationToken.None);
 
         repository.DeletedIds.Should().ContainSingle().Which.Should().Be(existing.Id);
         repository.Documents.Should().ContainSingle(d => d.Id == response.DocumentId);
@@ -197,7 +197,7 @@ public sealed class UploadDocumentHandlerTests
         var unitOfWork = new FakeUnitOfWork();
         var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), unitOfWork, new FakeFileHashService("hash-new"));
 
-        var response = await handler.Handle(CreateCommand(existing.Id), CancellationToken.None);
+        var response = await handler.HandleAsync(CreateCommand(existing.Id), CancellationToken.None);
 
         repository.DeletedIds.Should().ContainSingle().Which.Should().Be(existing.Id);
         repository.Documents.Should().ContainSingle(d => d.Id == response.DocumentId);
@@ -212,7 +212,7 @@ public sealed class UploadDocumentHandlerTests
         var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), new FakeFileHashService("hash-a"));
         var staleReplaceId = Guid.NewGuid();
 
-        var response = await handler.Handle(CreateCommand(staleReplaceId), CancellationToken.None);
+        var response = await handler.HandleAsync(CreateCommand(staleReplaceId), CancellationToken.None);
 
         repository.DeletedIds.Should().BeEmpty();
         repository.Documents.Should().ContainSingle(d => d.Id == response.DocumentId);
@@ -235,7 +235,7 @@ public sealed class UploadDocumentHandlerTests
         // ce test échouerait (MatchType serait SameNameDifferentContent et ExistingDocumentId celui de "older").
         var handler = new UploadDocumentHandler(repository, new FakeOutboxRepository(), new FakeUnitOfWork(), new FakeFileHashService("hash-newer"));
 
-        var act = () => handler.Handle(CreateCommand(), CancellationToken.None);
+        var act = () => handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         var exception = await act.Should().ThrowAsync<DuplicateDocumentException>();
         exception.Which.ExistingDocumentId.Should().Be(newer.Id, "la comparaison doit cibler le document le plus récent portant ce nom");

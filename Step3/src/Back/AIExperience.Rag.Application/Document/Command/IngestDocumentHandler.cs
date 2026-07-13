@@ -1,12 +1,12 @@
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
-using MediatR;
 using Microsoft.Extensions.Logging;
 
 namespace AIExperience.Rag.Application.Document.Command;
 
 /// <summary>
-/// Handler MediatR pour <see cref="IngestDocumentCommand"/>, invoqué par le worker d'ingestion en
+/// Handler pour <see cref="IngestDocumentCommand"/>, invoqué par le worker d'ingestion en
 /// arrière-plan. Exécute le pipeline d'ingestion sur un document déjà créé, en passant par le
 /// statut "en cours de traitement" avant de s'y attaquer — pour qu'un client qui interroge le
 /// document pendant ce temps voie un état cohérent plutôt qu'un statut figé sur "en attente". Un
@@ -18,13 +18,13 @@ public sealed class IngestDocumentHandler(
     IDocumentRepository documentRepository,
     DocumentIngestionStatusUpdater statusUpdater,
     IIngestionProgressReporter progressReporter,
-    ILogger<IngestDocumentHandler> logger) : IRequestHandler<IngestDocumentCommand, IngestDocumentResponse>
+    ILogger<IngestDocumentHandler> logger) : ICommandHandler<IngestDocumentCommand, IngestDocumentResponse>
 {
     /// <summary>Extensions vidéo/audio routées vers le pipeline segments plutôt que vers l'extraction texte générique.</summary>
     private static readonly string[] VideoOrAudioExtensions =
         [".mp4", ".mkv", ".webm", ".avi", ".mov", ".wav", ".mp3", ".m4a", ".ogg", ".flac"];
 
-    public async Task<IngestDocumentResponse> Handle(IngestDocumentCommand request, CancellationToken cancellationToken)
+    public async Task<IngestDocumentResponse> HandleAsync(IngestDocumentCommand request, CancellationToken cancellationToken)
     {
         var document = await documentRepository.GetByIdAsync(request.DocumentId, cancellationToken)
             ?? throw new InvalidOperationException($"Document introuvable après création : {request.DocumentId}");

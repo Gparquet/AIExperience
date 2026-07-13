@@ -1,4 +1,4 @@
-using MediatR;
+using AIExperience.Rag.Application.Common.Cqrs;
 
 namespace AIExperience.Rag.Application.Video.Command;
 
@@ -9,7 +9,7 @@ namespace AIExperience.Rag.Application.Video.Command;
 /// l'identifiant : tout le reste (fichier, langue, options) est relu depuis la ligne <c>Document</c>,
 /// pour que ce traitement soit rejouable à l'identique après une reprise.
 /// </summary>
-public sealed record ProcessVideoTranscriptionJobCommand : IRequest<ProcessVideoTranscriptionJobResponse>
+public sealed record ProcessVideoTranscriptionJobCommand : ICommand<ProcessVideoTranscriptionJobResponse>
 {
     /// <summary>Identifiant du document déjà créé en base de données.</summary>
     public required Guid DocumentId { get; init; }

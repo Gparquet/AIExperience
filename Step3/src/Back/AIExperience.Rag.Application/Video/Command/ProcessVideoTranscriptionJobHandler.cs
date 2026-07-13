@@ -1,10 +1,10 @@
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Application.Document.Command;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Rag.Domain.Interfaces.Services.Video;
 using AIExperience.Rag.Domain.Models;
-using MediatR;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
@@ -26,13 +26,13 @@ public sealed class ProcessVideoTranscriptionJobHandler(
     DocumentIngestionStatusUpdater statusUpdater,
     IIngestionProgressReporter progressReporter,
     ILogger<ProcessVideoTranscriptionJobHandler> logger)
-    : IRequestHandler<ProcessVideoTranscriptionJobCommand, ProcessVideoTranscriptionJobResponse>
+    : ICommandHandler<ProcessVideoTranscriptionJobCommand, ProcessVideoTranscriptionJobResponse>
 {
     /// <summary>Extensions considérées comme de l'audio pur — pas besoin d'extraction FFmpeg.</summary>
     private static readonly string[] AudioExtensions =
         [".wav", ".mp3", ".m4a", ".ogg", ".flac"];
 
-    public async Task<ProcessVideoTranscriptionJobResponse> Handle(ProcessVideoTranscriptionJobCommand request, CancellationToken cancellationToken)
+    public async Task<ProcessVideoTranscriptionJobResponse> HandleAsync(ProcessVideoTranscriptionJobCommand request, CancellationToken cancellationToken)
     {
         var document = await documentRepository.GetByIdAsync(request.DocumentId, cancellationToken)
             ?? throw new InvalidOperationException($"Document introuvable après création : {request.DocumentId}");

@@ -1,8 +1,9 @@
-﻿using FluentValidation;
+using AIExperience.Rag.Application.Common.Cqrs;
 
 namespace AIExperience.Rag.Application.Document.Command;
 
-public sealed class UploadDocumentValidator : AbstractValidator<UploadDocumentCommand>
+/// <summary>Règles de validation de <see cref="UploadDocumentCommand"/>, exécutées par <see cref="ValidationStep{TCommand,TResponse}"/>.</summary>
+public sealed class UploadDocumentValidator : ICommandValidator<UploadDocumentCommand>
 {
     // ".doc" et ".xls" (formats binaires legacy Office) ont été retirés : aucun extracteur ne les
     // supporte (DocxTextExtractor ne gère que .docx, ExcelTextExtractor ne gère que .xlsx/.csv), donc
@@ -44,34 +45,35 @@ public sealed class UploadDocumentValidator : AbstractValidator<UploadDocumentCo
 
     private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 Mo
 
-    /// <summary>
-    /// Initialise les règles de validation pour l'upload de document.
-    /// </summary>
-    public UploadDocumentValidator()
+    public ValueTask ValidateAsync(UploadDocumentCommand command, ValidationErrors errors, CancellationToken cancellationToken)
     {
-        RuleFor(x => x.FileName)
-            .NotEmpty().WithMessage("Le nom du fichier est obligatoire.")
-            .MaximumLength(255).WithMessage("Le nom du fichier ne peut pas dépasser 255 caractères.")
-            .Must(HaveAllowedExtension).WithMessage($"Extension non autorisée. Extensions acceptées : {string.Join(", ", AllowedExtensions)}");
+        errors.NotEmpty(command.FileName, nameof(command.FileName), "Le nom du fichier est obligatoire.")
+              .MaxLength(command.FileName, 255, nameof(command.FileName), "Le nom du fichier ne peut pas dépasser 255 caractères.")
+              .AddIf(!HaveAllowedExtension(command.FileName), nameof(command.FileName),
+                  $"Extension non autorisée. Extensions acceptées : {string.Join(", ", AllowedExtensions)}");
 
-        RuleFor(x => x.ContentType)
-            .NotEmpty().WithMessage("Le type MIME est obligatoire.")
-            .Must(BeAllowedContentType).WithMessage("Type de fichier non supporté.");
+        errors.NotEmpty(command.ContentType, nameof(command.ContentType), "Le type MIME est obligatoire.")
+              .AddIf(!string.IsNullOrWhiteSpace(command.ContentType) && !BeAllowedContentType(command.ContentType),
+                  nameof(command.ContentType), "Type de fichier non supporté.");
 
-        RuleFor(x => x.FileSizeBytes)
-            .GreaterThan(0).WithMessage("Le fichier ne peut pas être vide.")
-            .LessThanOrEqualTo(MaxFileSizeBytes).WithMessage("Le fichier ne peut pas dépasser 50 Mo.");
+        errors.AddIf(command.FileSizeBytes <= 0, nameof(command.FileSizeBytes), "Le fichier ne peut pas être vide.")
+              .AddIf(command.FileSizeBytes > MaxFileSizeBytes, nameof(command.FileSizeBytes), "Le fichier ne peut pas dépasser 50 Mo.");
 
-        RuleFor(x => x.UserId)
-            .NotEmpty().WithMessage("L'identifiant utilisateur est obligatoire.");
+        errors.NotEmpty(command.UserId, nameof(command.UserId), "L'identifiant utilisateur est obligatoire.");
 
-        RuleFor(x => x.DocumentMetadata)
-            .NotNull().WithMessage("Les métadonnées du document sont obligatoires.");
+        if (command.DocumentMetadata is null)
+        {
+            errors.AddIf(true, nameof(command.DocumentMetadata), "Les métadonnées du document sont obligatoires.");
+        }
+        else
+        {
+            errors.NotEmpty(command.DocumentMetadata.Title, $"{nameof(command.DocumentMetadata)}.{nameof(command.DocumentMetadata.Title)}",
+                      "Le titre du document est obligatoire.")
+                  .MaxLength(command.DocumentMetadata.Title, 500, $"{nameof(command.DocumentMetadata)}.{nameof(command.DocumentMetadata.Title)}",
+                      "Le titre ne peut pas dépasser 500 caractères.");
+        }
 
-        RuleFor(x => x.DocumentMetadata.Title)
-            .NotEmpty().WithMessage("Le titre du document est obligatoire.")
-            .MaximumLength(500).WithMessage("Le titre ne peut pas dépasser 500 caractères.")
-            .When(x => x.DocumentMetadata is not null);
+        return ValueTask.CompletedTask;
     }
 
     private static bool HaveAllowedExtension(string fileName)

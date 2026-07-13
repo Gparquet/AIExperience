@@ -1,14 +1,14 @@
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
-using MediatR;
 
 namespace AIExperience.Rag.Application.Document.Command;
 
 public sealed class DeleteDocumentHandler(
     IDocumentRepository documentRepository,
-    IUnitOfWork unitOfWork) : IRequestHandler<DeleteDocumentCommand, bool>
+    IUnitOfWork unitOfWork) : ICommandHandler<DeleteDocumentCommand, bool>
 {
-    public async Task<bool> Handle(DeleteDocumentCommand request, CancellationToken cancellationToken)
+    public async Task<bool> HandleAsync(DeleteDocumentCommand request, CancellationToken cancellationToken)
     {
         var document = await documentRepository.GetByIdAsync(request.DocumentId, cancellationToken);
         if (document is null)

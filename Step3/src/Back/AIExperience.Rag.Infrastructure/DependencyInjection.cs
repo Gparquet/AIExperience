@@ -1,4 +1,5 @@
-﻿using AIExperience.Rag.Application.Jobs;
+﻿using AIExperience.Rag.Application.Common;
+using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Rag.Domain.Interfaces.Services.AI;
@@ -61,6 +62,7 @@ public static class DependencyInjection
     {
         services.AddOptions<AiProviderOptions>().Bind(configuration.GetSection("AI"));
         services.AddOptions<RagOptions>().Bind(configuration.GetSection("RagOptions"));
+        services.AddOptions<DevAuthOptions>().Bind(configuration.GetSection(DevAuthOptions.SectionName));
         return services;
     }
 

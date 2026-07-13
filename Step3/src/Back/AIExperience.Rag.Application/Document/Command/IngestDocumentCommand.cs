@@ -1,4 +1,4 @@
-using MediatR;
+using AIExperience.Rag.Application.Common.Cqrs;
 
 namespace AIExperience.Rag.Application.Document.Command;
 
@@ -9,7 +9,7 @@ namespace AIExperience.Rag.Application.Document.Command;
 /// ligne <c>Document</c> au moment de l'exécution — ce qui permet de rejouer exactement le même
 /// traitement, que la commande soit envoyée juste après l'upload ou reprise après un redémarrage.
 /// </summary>
-public sealed record IngestDocumentCommand : IRequest<IngestDocumentResponse>
+public sealed record IngestDocumentCommand : ICommand<IngestDocumentResponse>
 {
     /// <summary>Identifiant du document déjà créé en base de données.</summary>
     public required Guid DocumentId { get; init; }

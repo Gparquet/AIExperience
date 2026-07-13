@@ -1,4 +1,4 @@
-using MediatR;
+using AIExperience.Rag.Application.Common.Cqrs;
 
 namespace AIExperience.Rag.Application.Video.Command;
 
@@ -7,7 +7,7 @@ namespace AIExperience.Rag.Application.Video.Command;
 /// file le job de transcription qui sera exécuté en arrière-plan par le worker d'ingestion. Rapide
 /// par construction — la transcription elle-même (potentiellement longue) est laissée au job.
 /// </summary>
-public sealed record CreateVideoTranscriptionJobCommand : IRequest<CreateVideoTranscriptionJobResponse>
+public sealed record CreateVideoTranscriptionJobCommand : ICommand<CreateVideoTranscriptionJobResponse>
 {
     /// <summary>Nom du fichier original.</summary>
     public required string FileName { get; init; }

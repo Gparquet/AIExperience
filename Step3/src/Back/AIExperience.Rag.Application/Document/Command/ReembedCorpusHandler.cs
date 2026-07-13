@@ -1,9 +1,9 @@
 using System.Diagnostics;
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
-using MediatR;
 
 namespace AIExperience.Rag.Application.Document.Command;
 
@@ -15,9 +15,9 @@ namespace AIExperience.Rag.Application.Document.Command;
 public sealed class ReembedCorpusHandler(
     IVectorStoreService vectorStoreService,
     IEmbeddingService embeddingService,
-    IDocumentRepository documentRepository) : IRequestHandler<ReembedCorpusCommand, ReembedCorpusResult>
+    IDocumentRepository documentRepository) : ICommandHandler<ReembedCorpusCommand, ReembedCorpusResult>
 {
-    public async Task<ReembedCorpusResult> Handle(ReembedCorpusCommand request, CancellationToken cancellationToken)
+    public async Task<ReembedCorpusResult> HandleAsync(ReembedCorpusCommand request, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
 

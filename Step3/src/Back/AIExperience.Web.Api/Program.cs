@@ -1,6 +1,7 @@
 using AIExperience.Rag.Application;
 using AIExperience.Rag.Domain.Interfaces.Services;
 using AIExperience.Rag.Infrastructure;
+using AIExperience.Web.Api.ExceptionHandling;
 using AIExperience.Web.Api.Hubs;
 using AIExperience.Web.Api.Notifications;
 using Scalar.AspNetCore;
@@ -11,6 +12,11 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IIngestionNotifier, SignalRIngestionNotifier>();
+
+// Traduit les CommandValidationException (échec de validation d'une commande CQRS) en 400
+// ValidationProblemDetails, plutôt que de les laisser remonter en 500 non gérées.
+builder.Services.AddExceptionHandler<CommandValidationExceptionHandler>();
+builder.Services.AddProblemDetails();
 
 builder.Services
     .AddInfrastructure(builder.Configuration)
@@ -29,6 +35,8 @@ builder.Services.AddCors(options =>
               .AllowCredentials()));
 
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {

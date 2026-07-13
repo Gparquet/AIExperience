@@ -1,12 +1,10 @@
-using AIExperience.Rag.Application.Common.Behaviors;
+using AIExperience.Rag.Application.Common.Cqrs;
 using AIExperience.Rag.Application.Document.Command;
 using AIExperience.Rag.Application.Jobs;
 using AIExperience.Rag.Application.Services;
 using AIExperience.Rag.Application.Services.LanguageDetection;
 using AIExperience.Rag.Application.Services.TextExtractor;
 using AIExperience.Rag.Domain.Interfaces.Services;
-using FluentValidation;
-using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 
@@ -20,29 +18,14 @@ namespace AIExperience.Rag.Application
         public static IServiceCollection AddApplication(this IServiceCollection services)
         {
             return services
-                     .ConfigureMediatR()
+                     .AddCqrs(Assembly.GetExecutingAssembly())
                      .AddChunker()
                      .AddTextExtractors()
                      .AddLanguageDetection()
                      .AddIngestion()
                      .AddFileHashing()
+                     .AddContentTypeResolution()
                      .AddIngestionWorker();
-        }
-
-        public static IServiceCollection ConfigureMediatR(this IServiceCollection services)
-        {
-            var assembly = Assembly.GetExecutingAssembly();
-
-            services.AddMediatR(cfg =>
-            {
-                cfg.RegisterServicesFromAssembly(assembly);
-                //cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
-                cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-                //cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(PerformanceBehavior<,>));
-            });
-
-            services.AddValidatorsFromAssembly(assembly);
-            return services;
         }
 
         public static IServiceCollection AddChunker(this IServiceCollection services)
@@ -84,6 +67,14 @@ namespace AIExperience.Rag.Application
         {
             // Singleton : sans état, réutilisable en concurrence (même pattern que TemporalChunker).
             services.AddSingleton<IFileHashService, FileHashService>();
+            return services;
+        }
+
+        /// <summary>Enregistre le résolveur de content-type, partagé par tous les points d'entrée qui reçoivent un fichier.</summary>
+        public static IServiceCollection AddContentTypeResolution(this IServiceCollection services)
+        {
+            // Singleton : sans état, réutilisable en concurrence (même pattern que FileHashService).
+            services.AddSingleton<IContentTypeResolver, ContentTypeResolver>();
             return services;
         }
 
