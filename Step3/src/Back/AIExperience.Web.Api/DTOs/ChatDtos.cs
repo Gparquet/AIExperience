@@ -20,7 +20,9 @@ public record AskQuestionRequest(
     /// Prompt système personnalisé transmis par le client.
     /// Si <c>null</c> ou vide, le pipeline utilise le prompt par défaut défini dans <c>RagPrompts</c>.
     /// </summary>
-    string? SystemPrompt = null);
+    string? SystemPrompt = null,
+    /// <summary>Session de conversation à poursuivre. Null/absent = nouvelle conversation.</summary>
+    Guid? SessionId = null);
 
 /// <summary>Prompts système par défaut exposés au front-end pour éviter toute duplication.</summary>
 public record SystemPromptsResponse(string Rag, string DirectLlm);
@@ -44,4 +46,22 @@ public record AskQuestionResponse(
     List<CitationResponse> Citations,
     string StrategyUsed,
     int TotalTokens,
-    long DurationMs);
+    long DurationMs,
+    /// <summary>Session à laquelle appartient cet échange (nouvelle ou réutilisée).</summary>
+    Guid SessionId);
+
+/// <summary>Résumé d'une session pour la liste latérale (sidebar).</summary>
+public record ChatSessionSummaryResponse(Guid Id, string Title, DateTimeOffset UpdatedAt, int MessageCount);
+
+/// <summary>Un message d'une session, tel que rechargé depuis l'historique.</summary>
+public record ChatMessageResponse(
+    string Role,
+    string Content,
+    List<CitationResponse>? Citations,
+    string? StrategyUsed,
+    int TokensUsed,
+    long DurationMs,
+    DateTimeOffset CreatedAt);
+
+/// <summary>Détail complet d'une session : titre + messages ordonnés.</summary>
+public record ChatSessionDetailResponse(Guid Id, string Title, List<ChatMessageResponse> Messages);
