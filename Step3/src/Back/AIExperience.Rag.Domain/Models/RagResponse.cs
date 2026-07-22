@@ -23,4 +23,11 @@ public sealed record RagResponse
 
     /// <summary>Durée totale du pipeline RAG en millisecondes (embedding + recherche + génération).</summary>
     public long DurationMs { get; init; }
+
+    /// <summary>
+    /// Identifiant de la session de conversation à laquelle appartient cet échange.
+    /// Toujours renseigné par le pipeline : nouvelle session créée si la requête n'en portait pas,
+    /// ou session existante réutilisée. Permet au front de rattacher la réponse à un fil de discussion.
+    /// </summary>
+    public Guid SessionId { get; init; }
 }
