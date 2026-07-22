@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
-import type { CitationResponse, DocumentResponse } from '../types';
+import ChatSidebar from '../components/ChatSidebar';
+import type { ChatMessageDetail, CitationResponse, DocumentResponse } from '../types';
 
 /** Les 3 modes de démonstration disponibles dans l'interface. */
 type Mode = 'classic' | 'llm' | 'rag';
@@ -38,6 +39,17 @@ const MODE_PLACEHOLDER: Record<Mode, string> = {
 export default function ChatPage() {
   const location = useLocation();
   const locationState = (location.state as ChatLocationState | null) ?? {};
+
+  const navigate = useNavigate();
+  const params = useParams<{ sessionId?: string }>();
+
+  // Session active : initialisée depuis l'URL, mise à jour après le premier échange d'une conversation vierge.
+  const [activeSessionId, setActiveSessionId] = useState<string | undefined>(params.sessionId);
+  // Force le rechargement de la sidebar après chaque nouvel échange.
+  const [sidebarReload, setSidebarReload] = useState(0);
+  // Quand on vient de créer une session et de naviguer vers /chat/:id, on évite un re-fetch inutile
+  // (les messages en mémoire sont plus riches : ils portent les citations enrichies section/horodatage).
+  const skipLoadRef = useRef<string | null>(null);
 
   // Filtre actif : documentId ciblé (null = recherche globale sur tous les documents)
   const [filteredDocumentId, setFilteredDocumentId] = useState<string | null>(
@@ -86,6 +98,64 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
 
+  /**
+   * Convertit un message rechargé depuis l'historique en message local.
+   * Le mode d'affichage est déduit de la stratégie enregistrée :
+   *  - "FullText"   → recherche classique
+   *  - "DirectLlm"  → LLM direct
+   *  - autre (Direct/HyDE/Fusion/Adaptive) → RAG + LLM
+   */
+  function mapServerMessage(m: ChatMessageDetail): Message {
+    const role = m.role.toLowerCase() === 'user' ? 'user' : 'assistant';
+    let msgMode: Mode = 'rag';
+    if (m.strategyUsed === 'FullText') msgMode = 'classic';
+    else if (m.strategyUsed === 'DirectLlm') msgMode = 'llm';
+
+    return {
+      role,
+      content: m.content,
+      mode: role === 'assistant' ? msgMode : undefined,
+      citations: m.citations ?? undefined,
+      meta: role === 'assistant'
+        ? { strategy: m.strategyUsed ?? '', tokens: m.tokensUsed, duration: m.durationMs }
+        : undefined,
+    };
+  }
+
+  // Chargement / reprise de conversation piloté par l'URL (clic sidebar, URL directe, nouvelle conversation).
+  useEffect(() => {
+    const sid = params.sessionId;
+    setActiveSessionId(sid);
+
+    // Conversation vierge (route /chat sans id) : on repart d'un état neuf.
+    if (!sid) {
+      setMessages([]);
+      return;
+    }
+
+    // On vient juste de créer cette session : ses messages sont déjà en mémoire, inutile de recharger.
+    if (skipLoadRef.current === sid) {
+      skipLoadRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    api.chat.getSession(sid)
+      .then(detail => {
+        if (!cancelled) setMessages(detail.messages.map(mapServerMessage));
+      })
+      .catch(() => {
+        // 404 / session invalide : retour silencieux à une conversation vierge (pas d'erreur bloquante).
+        if (!cancelled) {
+          setMessages([]);
+          navigate('/chat', { replace: true });
+        }
+      });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.sessionId]);
+
   function handleDocumentSelect(e: React.ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value;
     if (!val) {
@@ -121,7 +191,7 @@ export default function ChatPage() {
     const systemPrompt = useLlm ? systemPrompts[mode as 'llm' | 'rag'] : undefined;
 
     try {
-      for await (const event of api.chat.askStream({ question: q, documentIds, useLlm, useRag, systemPrompt })) {
+      for await (const event of api.chat.askStream({ question: q, documentIds, useLlm, useRag, systemPrompt, sessionId: activeSessionId })) {
         if (event.event === 'token') {
           streamingRef.current += event.data.token;
           flushSync(() => {
@@ -138,6 +208,16 @@ export default function ChatPage() {
             citations: res.citations,
             mode: currentMode,
           }]);
+
+          // Première réponse d'une conversation vierge : on adopte l'id renvoyé et on rend l'URL
+          // rechargeable/partageable, sans recharger les messages qu'on vient d'afficher.
+          if (!activeSessionId && res.sessionId) {
+            skipLoadRef.current = res.sessionId;
+            setActiveSessionId(res.sessionId);
+            navigate(`/chat/${res.sessionId}`, { replace: true });
+          }
+          // Remonte la conversation active en tête de la sidebar.
+          setSidebarReload(x => x + 1);
         } else if (event.event === 'error') {
           throw new Error(event.data.message);
         }
@@ -153,7 +233,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="chat-main">
+    <div className="chat-layout">
+      <ChatSidebar activeSessionId={activeSessionId} reloadSignal={sidebarReload} />
+      <div className="chat-main">
       {/* Barre de mode : 3 boutons de démonstration */}
       <div className="mode-bar">
         <button
@@ -407,6 +489,7 @@ export default function ChatPage() {
           {mode === 'classic' ? 'Rechercher' : 'Envoyer'}
         </button>
       </form>
+      </div>
     </div>
   );
 }

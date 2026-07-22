@@ -36,6 +36,7 @@ export default function App() {
               <Route path="/documents/:id" element={<DocumentDetailPage />} />
               <Route path="/video" element={<VideoPage />} />
               <Route path="/chat" element={<ChatPage />} />
+              <Route path="/chat/:sessionId" element={<ChatPage />} />
             </Routes>
           </main>
         </div>
