@@ -35,6 +35,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
         IRerankerService rerankerService,
         IContextCompressorService contextCompressorService,
         IConversationRepository conversationRepository,
+        IUnitOfWork unitOfWork,
         IOptions<RagOptions> options,
         IChatClient chatClient,
         ILogger<RagPipelineService> logger) : IRagPipelineService
@@ -64,14 +65,28 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             var sw = Stopwatch.StartNew();
             var ragOptions = options.Value;
 
-            // Mode sans LLM : recherche full-text PostgreSQL, retourne les chunks bruts sans synthèse.
-            if (!query.UseLlm)
-                return await AskFullTextAsync(query, ragOptions, sw, ct);
+            // Résolution de la session AVANT toute lecture d'historique : pour une session existante,
+            // GetMessagesAsync (en aval) lit l'historique déjà en base, sans le tour courant.
+            var sessionId = await ResolveSessionAsync(query, ct);
 
-            // Mode LLM direct sans RAG : aucune récupération documentaire, appel direct au LLM.
-            if (!query.UseRag)
-                return await AskDirectLlmAsync(query, sw, ct);
+            // Dispatch selon le mode, chaque branche produisant une RagResponse.
+            RagResponse response =
+                !query.UseLlm ? await AskFullTextAsync(query, ragOptions, sw, ct)
+                : !query.UseRag ? await AskDirectLlmAsync(query, sw, ct)
+                : await RunRagPipelineAsync(query, ragOptions, sw, ct);
 
+            // Le SessionId résolu remonte jusqu'au contrôleur ; l'échange est persisté quel que soit le mode.
+            response = response with { SessionId = sessionId };
+            await PersistExchangeAsync(sessionId, query.Question, response, ct);
+            return response;
+        }
+
+        /// <summary>
+        /// Cœur du pipeline RAG complet (récupération → reranking → compression → LLM → citations).
+        /// Extrait de <see cref="AskAsync"/> pour permettre à celui-ci d'orchestrer la session autour du mode.
+        /// </summary>
+        private async Task<RagResponse> RunRagPipelineAsync(RagQuery query, RagOptions ragOptions, Stopwatch sw, CancellationToken ct)
+        {
             // 1. Résolution de la stratégie (routage Adaptive + repli si HyDE/Fusion désactivés)
             var strategy = await ResolveStrategyAsync(query, ragOptions, ct);
 
@@ -148,18 +163,25 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             var sw = Stopwatch.StartNew();
             var ragOptions = options.Value;
 
+            // Résolution de la session en tête, avant toute lecture d'historique (comme en non-streaming).
+            var sessionId = await ResolveSessionAsync(query, ct);
+
             // Mode sans LLM : pas de streaming — retourne un unique événement "done" avec les chunks bruts.
             if (!query.UseLlm)
             {
                 var response = await AskFullTextAsync(query, ragOptions, sw, ct);
-                yield return new RagStreamChunk { IsDone = true, FinalResponse = response };
+                yield return new RagStreamChunk
+                {
+                    IsDone = true,
+                    FinalResponse = await FinalizeExchangeAsync(sessionId, query.Question, response, ct)
+                };
                 yield break;
             }
 
             // Mode LLM direct sans RAG : streaming direct sans récupération documentaire.
             if (!query.UseRag)
             {
-                await foreach (var chunk in StreamDirectLlmAsync(query, sw, ct))
+                await foreach (var chunk in StreamDirectLlmAsync(query, sessionId, sw, ct))
                     yield return chunk;
                 yield break;
             }
@@ -192,17 +214,18 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             if (contextChunks.Count == 0)
             {
                 sw.Stop();
+                var emptyResponse = new RagResponse
+                {
+                    Answer = "Aucun document pertinent n'a été trouvé pour répondre à cette question.",
+                    Citations = [],
+                    StrategyUsed = strategy,
+                    TotalTokens = 0,
+                    DurationMs = sw.ElapsedMilliseconds
+                };
                 yield return new RagStreamChunk
                 {
                     IsDone = true,
-                    FinalResponse = new RagResponse
-                    {
-                        Answer = "Aucun document pertinent n'a été trouvé pour répondre à cette question.",
-                        Citations = [],
-                        StrategyUsed = strategy,
-                        TotalTokens = 0,
-                        DurationMs = sw.ElapsedMilliseconds
-                    }
+                    FinalResponse = await FinalizeExchangeAsync(sessionId, query.Question, emptyResponse, ct)
                 };
                 yield break;
             }
@@ -237,17 +260,18 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             var streamAnswer = totalText.ToString();
             var citations = FilterCitationsByAnswer(BuildCitations(contextChunks, rankedChunks), streamAnswer);
 
+            var finalResponse = new RagResponse
+            {
+                Answer = streamAnswer,
+                Citations = citations,
+                StrategyUsed = strategy,
+                TotalTokens = 0,
+                DurationMs = sw.ElapsedMilliseconds
+            };
             yield return new RagStreamChunk
             {
                 IsDone = true,
-                FinalResponse = new RagResponse
-                {
-                    Answer = streamAnswer,
-                    Citations = citations,
-                    StrategyUsed = strategy,
-                    TotalTokens = 0,
-                    DurationMs = sw.ElapsedMilliseconds
-                }
+                FinalResponse = await FinalizeExchangeAsync(sessionId, query.Question, finalResponse, ct)
             };
         }
 
@@ -292,7 +316,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
         /// Streaming LLM direct sans RAG — même logique que <see cref="AskDirectLlmAsync"/> mais en mode streaming.
         /// </summary>
         private async IAsyncEnumerable<RagStreamChunk> StreamDirectLlmAsync(
-            RagQuery query, Stopwatch sw, [EnumeratorCancellation] CancellationToken ct)
+            RagQuery query, Guid sessionId, Stopwatch sw, [EnumeratorCancellation] CancellationToken ct)
         {
             var chatHistory = new ChatHistory(query.SystemPrompt ?? RagPrompts.DirectLlmSystem);
 
@@ -324,17 +348,18 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             }
 
             sw.Stop();
+            var finalResponse = new RagResponse
+            {
+                Answer = totalText.ToString(),
+                Citations = [],
+                StrategyUsed = RagStrategy.DirectLlm,
+                TotalTokens = 0,
+                DurationMs = sw.ElapsedMilliseconds
+            };
             yield return new RagStreamChunk
             {
                 IsDone = true,
-                FinalResponse = new RagResponse
-                {
-                    Answer = totalText.ToString(),
-                    Citations = [],
-                    StrategyUsed = RagStrategy.DirectLlm,
-                    TotalTokens = 0,
-                    DurationMs = sw.ElapsedMilliseconds
-                }
+                FinalResponse = await FinalizeExchangeAsync(sessionId, query.Question, finalResponse, ct)
             };
         }
 
@@ -577,6 +602,94 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             // Repli : si le LLM a cité des noms ne correspondant à aucun document du contexte, on préfère
             // retourner les citations d'origine plutôt qu'une liste vide trompeuse.
             return filtered.Count > 0 ? filtered : citations;
+        }
+
+        /// <summary>
+        /// Résout la session de la requête : recharge et réactive (<see cref="ConversationSession.Touch"/>)
+        /// une session existante, ou en crée une neuve (titre = première question tronquée) si aucun id
+        /// valide n'est fourni. Le RagQuery n'est jamais muté : la lecture d'historique en aval continue
+        /// de se baser sur <c>query.SessionId</c>, donc n'inclut jamais le tour courant.
+        /// </summary>
+        private async Task<Guid> ResolveSessionAsync(RagQuery query, CancellationToken ct)
+        {
+            if (query.SessionId != Guid.Empty)
+            {
+                var existing = await conversationRepository.GetSessionByIdAsync(query.SessionId, ct);
+                if (existing is not null)
+                {
+                    // Marque la session active ; l'UpdatedAt sera persisté avec le reste de l'échange.
+                    existing.Touch();
+                    return existing.Id;
+                }
+                // Id fourni mais introuvable (session supprimée, id forgé) : on repart sur une session neuve
+                // plutôt que d'échouer la requête.
+            }
+
+            var session = ConversationSession.Create(query.UserId, BuildSessionTitle(query.Question));
+            await conversationRepository.AddSessionAsync(session, ct);
+            return session.Id;
+        }
+
+        /// <summary>Génère un titre de session depuis la première question (tronquée à ~60 caractères).</summary>
+        private static string BuildSessionTitle(string question)
+        {
+            var trimmed = question.Trim();
+            return trimmed.Length <= 60 ? trimmed : trimmed[..60] + "…";
+        }
+
+        /// <summary>
+        /// Persiste l'échange complet (message utilisateur + message assistant + citations) en un seul
+        /// <see cref="IUnitOfWork.SaveChangesAsync"/>. Les citations sont rattachées via la collection de
+        /// navigation du message assistant : EF insère le graphe avec le bon MessageId. Entouré d'un
+        /// try/catch : un échec de persistance est logué en Warning mais ne fait jamais échouer la réponse
+        /// déjà produite et servie à l'utilisateur (dégradation gracieuse, cohérente avec le reste du pipeline).
+        /// </summary>
+        private async Task PersistExchangeAsync(Guid sessionId, string question, RagResponse response, CancellationToken ct)
+        {
+            try
+            {
+                // Type Domain pleinement qualifié : ChatMessage est ambigu dans ce fichier avec
+                // Microsoft.Extensions.AI.ChatMessage utilisé pour les appels LLM.
+                var userMessage = Domain.Entities.ChatMessage.CreateUserMessage(sessionId, question);
+                await conversationRepository.AddMessageAsync(userMessage, ct);
+
+                var assistantMessage = Domain.Entities.ChatMessage.CreateAssistantMessage(
+                    sessionId, response.Answer, response.TotalTokens, response.StrategyUsed, response.DurationMs);
+
+                // Seuls les champs mappés sont persistés (document/nom/page/extrait/score) ; section et
+                // horodatages vidéo restent [NotMapped] — limitation assumée pour ce lot.
+                foreach (var citation in response.Citations)
+                {
+                    assistantMessage.Citations.Add(Citation.Create(
+                        assistantMessage.Id,
+                        citation.DocumentId,
+                        citation.DocumentName,
+                        citation.Excerpt,
+                        citation.Score,
+                        citation.PageNumber));
+                }
+
+                await conversationRepository.AddMessageAsync(assistantMessage, ct);
+                await unitOfWork.SaveChangesAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Échec de persistance de l'échange pour la session {SessionId} — la réponse reste servie à l'utilisateur.",
+                    sessionId);
+            }
+        }
+
+        /// <summary>
+        /// Estampille la réponse avec le SessionId résolu puis persiste l'échange. Renvoie la réponse
+        /// estampillée. Point de finalisation commun aux branches streaming (où le SessionId doit être
+        /// posé sur la réponse portée par l'événement "done").
+        /// </summary>
+        private async Task<RagResponse> FinalizeExchangeAsync(Guid sessionId, string question, RagResponse response, CancellationToken ct)
+        {
+            var stamped = response with { SessionId = sessionId };
+            await PersistExchangeAsync(sessionId, question, stamped, ct);
+            return stamped;
         }
     }
 }
