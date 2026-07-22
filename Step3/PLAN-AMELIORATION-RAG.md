@@ -29,6 +29,10 @@
 > un seul chemin d'ingestion vidéo), I-10 (chunks temporels ~1400 car. utiles + overlap + scission
 > des segments surdimensionnés), Whisper `ModelPath` → `ggml-medium.bin`. **Lot 2-ter devient le
 > prochain lot**.
+> **Révision : 2026-07-13** — audit d'architecture global : ajout des constats **I-24** (fichier
+> original supprimé après ingestion — les sources ne sont plus consultables) et **R-19** (citations
+> non actionnables : page et timestamps affichés mais aucune consultation possible de la source),
+> et insertion du **Lot 5 — Consultation des sources depuis les citations** (points 36 à 39).
 
 ---
 
@@ -58,6 +62,7 @@ LLM coûteuses sont activées par défaut sans batching.
 | **Lot 2-bis** — qualité de la restitution vidéo | ✅ **Livré** — I-21, I-22, I-10, Whisper `medium` (voir révision 08/07 bis) | commit `d170cc4` |
 | **Lot 2-ter** — UX d'upload & ingestion asynchrone | ✅ **Code livré** (08/07) — I-16/I-23, outbox + worker + SignalR ; vérification manuelle restante | — |
 | **Lots 3, 4** | ⏳ Non commencés | — |
+| **Lot 5** — consultation des sources | ⏳ Non commencé (inséré 13/07) | — |
 
 > ⚠️ **Effet de bord du Lot 0, non anticipé** : la désactivation du reranker (R-5) a supprimé la
 > coupe à `TopKAfterRerank = 5` et la compression ne filtre plus les chunks « AUCUN ». Le dernier
@@ -106,6 +111,7 @@ LLM coûteuses sont activées par défaut sans batching.
 | I-16 | **Ingestion 100 % synchrone dans la requête HTTP** : `DocumentsController.Upload` attend `IngestAsync`. Un gros PDF/vidéo bloque le thread et risque le timeout. L'Outbox/BackgroundService est **documenté mais non câblé** (le handler ne fait que persister) | [DocumentsController.cs:65-78](Step%203/src/Back/AIExperience.Web.Api/Controllers/DocumentsController.cs#L65-L78), [UploadDocumentHandler.cs](Step%203/src/Back/AIExperience.Rag.Application/Document/Command/UploadDocumentHandler.cs) | 🔴 Scalabilité / UX |
 | I-17 | `init.sql` : **aucun index full-text GIN**. `SearchFullTextAsync` recalcule `to_tsvector('french', content)` **à chaque ligne et à chaque requête** → scan séquentiel | [init.sql:43-62](Step%203/scripts/init.sql#L43-L62) vs [PgVectorStoreService.cs:110-122](Step%203/src/Back/AIExperience.Rag.Infrastructure/VectorStore/PgVectorStoreService.cs#L110-L122) | 🟠 Mode « Classique » lent à l'échelle |
 | I-18 | `init.sql` **ne contient pas** `start_time_seconds` / `end_time_seconds` (appliquées à la main via migration). Schéma à la dérive | [init.sql](Step%203/scripts/init.sql), `migrate-temporal-chunks.sql` | 🟠 Reproductibilité |
+| I-24 | **Fichier original supprimé après ingestion** *(nouveau — révision 13/07)* : le worker efface le fichier de travail une fois le traitement terminé (comportement voulu du Lot 2-ter). Aucune copie durable, aucune colonne `storage_path` → impossible de consulter la source d'une citation, et toute ré-ingestion (déjà subie 2× : R-15, I-21) exige un re-upload manuel | [WorkFileStore.cs](src/Back/AIExperience.Web.Api/Helpers/WorkFileStore.cs), `IngestionWorker` | 🟠 Produit / opérations |
 
 ### 2.5. Vidéo
 
@@ -158,6 +164,12 @@ LLM coûteuses sont activées par défaut sans batching.
 | R-12 | Aucune **mesure par étape** (timing rerank/compression/LLM) → impossible de diagnostiquer la lenteur | 🟡 |
 | R-13 | Aucun **harnais d'évaluation** (recall@k, fidélité des réponses, jeu de questions « golden ») → on améliore à l'aveugle | 🟠 |
 | R-14 | `TotalTokens = 0` en mode streaming ; pas de suivi de consommation | 🟡 |
+
+### 3.5. Consultation des sources *(nouveau — révision 13/07)*
+
+| # | Constat | Localisation | Impact |
+|---|---------|--------------|--------|
+| R-19 | **Citations non actionnables** : toute la chaîne de métadonnées construite depuis le Lot 1 (page, section, `start/end_time_seconds`) est propagée jusqu'au front… mais aboutit à une impasse. Une citation « p.12 » ou « 00:14:32 » n'est pas cliquable : aucun endpoint ne sert le fichier source (qui n'existe d'ailleurs plus — I-24), aucun visualiseur PDF/vidéo côté front. La valeur produit de tout ce travail de propagation n'est pas réalisée | [ChatPage.tsx](src/Front/src/pages/ChatPage.tsx), [DocumentsController.cs](src/Back/AIExperience.Web.Api/Controllers/DocumentsController.cs) | 🟠 Valeur produit des citations |
 
 ---
 
@@ -299,6 +311,52 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 21. **R-12/R-14 Observabilité** : timings par étape (logs structurés / OpenTelemetry), suivi tokens. *Impact 3 / M.*
 22. **R-13 Harnais d'évaluation** : jeu de questions « golden » + métriques recall@k et fidélité, pour mesurer chaque amélioration. *Impact 4 / L.*
 
+### 🔎 Lot 5 — Consultation des sources depuis les citations (3 à 5 jours) — ⏳ NOUVEAU (13/07)
+
+> **Nouveau (révision 13/07, audit d'architecture).** Constat : la chaîne de métadonnées de
+> citation (page, section, timestamps vidéo) est complète de bout en bout depuis les Lots 1 et
+> 2-bis… mais elle débouche sur une impasse (R-19), et l'original n'existe même plus (I-24).
+> C'est le **plus gros gain produit visible pour un coût modéré** : cliquer une citation ouvre le
+> PDF à la bonne page ou lance la vidéo au bon timestamp. Bénéfice opérationnel induit : la
+> **ré-ingestion sans re-upload** — subie manuellement deux fois déjà (R-15, I-21) et inévitable à
+> chaque évolution du pipeline (OCR I-4, chunker, changement de modèle d'embedding).
+
+36. **I-24 Stockage durable des originaux** : interface `IFileStorage` en couche Domain
+    (`OpenRead`/`SaveAsync`/`DeleteAsync`), implémentation disque local (`LocalFileStorage`,
+    répertoire configurable via options `Storage`). À la fin du traitement, le worker **déplace**
+    le fichier de travail vers le stockage définitif au lieu de le supprimer (le nettoyage ne
+    s'applique plus qu'aux échecs et aux orphelins). Nouvelle colonne `storage_path` +
+    `content_type` sur `documents` (migration + `init.sql` aligné — leçon de I-18) ;
+    `DeleteDocumentHandler` supprime aussi le fichier stocké. *Impact 5 / M.*
+37. **R-19a Endpoint de consultation** : `GET /api/documents/{id}/content` — lecture directe
+    (pas de commande CQRS, convention lecture = service direct respectée), streaming du fichier
+    avec le bon `Content-Type` et **`enableRangeProcessing: true`** (indispensable pour que
+    `<video>` puisse chercher dans le flux sans tout télécharger). Vérifier l'appartenance du
+    document à l'utilisateur courant (DevAuth aujourd'hui, prêt pour l'auth réelle demain).
+    *Impact 4 / S.*
+38. **R-19b Visualiseur front** : au clic sur une citation, panneau « Source » qui ouvre —
+    PDF : viewer natif du navigateur via `<iframe src=".../content#page={pageNumber}">`
+    (l'ancre `#page=` est honorée par Chromium/Firefox, zéro dépendance) ;
+    vidéo/audio : `<video>`/`<audio>` natif avec `currentTime = startTimeSeconds` + lecture
+    automatique. Les métadonnées nécessaires (`pageNumber`, `startTimeSeconds`) sont **déjà**
+    dans `CitationResponse`. *Impact 5 / M.*
+39. **I-24' Ré-ingestion depuis le stockage** : commande `ReingestDocumentCommand` qui purge les
+    chunks existants et rejoue extraction → chunking → embeddings depuis l'original stocké, via la
+    même plomberie outbox/worker que l'upload (statuts et notifications SignalR réutilisés tels
+    quels). Transforme les futures ré-ingestions obligatoires en un bouton au lieu d'un re-upload
+    du corpus. *Impact 3 / S-M.*
+
+> **Reporté (YAGNI tant que 37-38 n'ont pas validé l'usage)** : surlignage de l'extrait cité dans
+> le PDF (imposerait pdf.js + recherche de texte) ; miniatures/aperçus des documents.
+>
+> **Vérification manuelle** : upload PDF → question → clic citation → le PDF s'ouvre à la page
+> citée ; upload vidéo → question → clic citation → la vidéo démarre au timestamp cité ; seek
+> dans la vidéo (valide les Range requests) ; suppression d'un document → fichier stocké supprimé ;
+> `ReingestDocumentCommand` sur un document existant → chunks régénérés, pas de doublons.
+>
+> **Risque volumétrie** : conserver les originaux vidéo coûte cher en disque — prévoir dès le
+> point 36 une politique configurable (quota, ou conservation paramétrable par type de fichier).
+
 ---
 
 ## 5. Recommandation de séquencement
@@ -311,6 +369,7 @@ Semaine 4 : Lot 2 (multi-format) ───────────────�
 Semaine 5 : Lot 2-bis (restitution vidéo) ────────────► ✅ LIVRÉ (08/07) — corrige la restitution vidéo
 Semaine 6 : Lot 2-ter (UX upload & ingestion async) ──► ✅ CODE LIVRÉ (08/07) — débloque l'utilisateur à l'import + notification de fin
 Ensuite   : Lot 3 (restitution restante — R-2, R-11, R-4/R-8)
+Puis      : Lot 5 (consultation des sources — I-24, R-19) — gain produit le plus visible
 Continu   : Lot 4 (observabilité, évaluation, outbox multi-instance) + reliquat Lot 1
 ```
 
@@ -329,6 +388,13 @@ Continu   : Lot 4 (observabilité, évaluation, outbox multi-instance) + reliqua
 - **Modèle LLM local 1B** : qualité limitée ; le harnais d'évaluation (R-13) permettra d'arbitrer un éventuel passage à un modèle plus capable. Le routage **Adaptive** dépend aussi de ce 1B : tant qu'il n'est pas évalué, préférer `Direct` par défaut est une option défendable.
 - **Ré-ingestion obligatoire après R-15** (préfixes `nomic`) : les vecteurs stockés sans préfixe sont incompatibles avec des requêtes préfixées. Prévoir un vidage/ré-upload du corpus (ou un script de ré-ingestion) dans le même lot.
 - **Ré-ingestion des vidéos obligatoire après I-21** : les vecteurs des chunks vidéo ont été calculés sur le texte pollué par les timestamps inline ; ils doivent être recalculés sur le texte épuré (même logique que R-15, limitée aux documents vidéo/audio).
+- **Volumétrie du stockage des originaux (Lot 5)** : conserver les vidéos uploadées peut coûter
+  cher en disque. Politique de rétention/quota à définir dès le point 36, pas après coup.
+- **`GET /api/documents/{id}/content` = nouvelle surface d'exposition (Lot 5)** : l'endpoint doit
+  vérifier l'appartenance du document à l'utilisateur — et plus largement, l'isolation par
+  utilisateur est aujourd'hui absente de **toute** la chaîne de lecture (y compris la recherche
+  pgvector/full-text, qui ne filtre jamais par `user_id`). À concevoir « user-aware » dès
+  maintenant pour ne pas payer une refonte le jour de l'authentification réelle.
 - **File d'ingestion en mémoire (Lot 2-ter)** : le `Channel<Guid>` du point 33 est mono-instance et perdu au redémarrage — assumé tant que l'API tourne en instance unique, à condition d'implémenter la **reprise au démarrage** (re-scan des documents `Pending`/`Processing`). Le passage multi-instance exige la bascule vers l'Outbox (`outbox_messages`, Lot 4). Le fichier uploadé doit survivre à la requête HTTP (copie dans un répertoire de travail, plus de `TempUploadedFile` supprimé en fin de requête) et être nettoyé en fin de traitement.
 
 > Lot 0-bis (points 23 à 28), Lot 2 (points 12 à 14), Lot 2-bis (points 29 à 32) et Lot 2-ter
@@ -832,6 +898,50 @@ public sealed class IngestionWorker(IIngestionQueue queue, IServiceScopeFactory 
 | B. Outbox (`outbox_messages`) + worker de polling + SignalR | File durable en base (table déjà au schéma) | Cible **multi-instance** (Lot 4) — plus robuste mais plus de code (polling, verrouillage `FOR UPDATE SKIP LOCKED`) pour un bénéfice nul tant qu'il n'y a qu'une instance |
 | C. Polling front seul (pas de push) | Le front interroge `GET /api/documents/{id}` et affiche le toast au passage à `Completed` | Acceptable en repli (et nécessaire comme filet de sécurité), mais notification différée de l'intervalle de polling et trafic inutile — insuffisant seul |
 
+### A.6. Cycle de vie des fichiers *(nouveau — révision 13/07)*
+
+#### I-24 — Fichier original supprimé après ingestion
+
+**Mécanisme.** `WorkFileStore.SaveAsync` copie l'upload dans le répertoire de travail
+(`Ingestion:WorkDirectory`), et le contrat documenté est explicite : *« c'est ce même worker qui le
+supprime une fois le traitement terminé »*. C'était le bon choix pour le Lot 2-ter (le fichier ne
+servait qu'à l'ingestion différée), mais aucune copie durable n'est conservée et l'entité
+`Document` n'a pas de `StoragePath` : après `Completed`, l'original n'existe plus nulle part.
+
+**Pourquoi c'est grave.** Deux conséquences distinctes :
+1. **Produit** : les citations portent page, section et timestamps… vers un fichier introuvable
+   (cause racine de R-19).
+2. **Opérations** : toute évolution du pipeline exigeant une ré-ingestion (déjà arrivé **deux
+   fois** : préfixes `nomic` R-15, timestamps inline I-21 ; arrivera encore avec l'OCR I-4 ou un
+   changement de modèle d'embedding) impose de redemander les fichiers à l'utilisateur.
+   `ReembedCorpusCommand` ne couvre que le ré-embedding des chunks existants, pas une
+   ré-extraction/re-chunking.
+
+**Correctif.** Abstraction de stockage + déplacement au lieu de suppression :
+
+```csharp
+/// <summary>Stockage durable des fichiers originaux des documents ingérés.</summary>
+public interface IFileStorage
+{
+    /// <summary>Déplace un fichier du répertoire de travail vers le stockage définitif.</summary>
+    Task<string> PersistAsync(string workFilePath, Guid documentId, CancellationToken ct);
+
+    /// <summary>Ouvre l'original en lecture (streaming, jamais chargé en mémoire).</summary>
+    Stream OpenRead(string storagePath);
+
+    /// <summary>Supprime l'original (appelé à la suppression du document).</summary>
+    Task DeleteAsync(string storagePath, CancellationToken ct);
+}
+```
+
+- Fin de traitement réussie : `File.Move` vers `Storage:Directory` (même volume = déplacement
+  atomique et instantané, pas de copie), `storage_path` + `content_type` persistés sur `documents`.
+- Échec : comportement actuel conservé (suppression du fichier de travail).
+- `DeleteDocumentHandler` : supprime chunks **et** fichier stocké.
+- Migration SQL + `init.sql` mis à jour ensemble (leçon de I-18).
+- L'implémentation disque local suffit ; l'interface permet S3/Azure Blob sans toucher les
+  appelants le jour venu.
+
 ## B. RESTITUTION (RAG / LLM)
 
 ### B.1. Bugs critiques de qualité
@@ -1157,6 +1267,52 @@ modèle sur ce corpus, calibrer plus finement ne changerait rien. Le prochain ga
 de **R-18** (reranker cross-encoder/LLM) : seul mécanisme capable de produire un score de
 pertinence sémantiquement interprétable pour filtrer le bruit résiduel et détecter l'absence de
 contenu pertinent.
+
+## B.6. Nouveau constat — révision 2026-07-13 (consultation des sources)
+
+#### R-19 — Citations non actionnables
+
+**Mécanisme.** Le front affiche pour chaque citation le nom du document, la page, la section et —
+pour les vidéos — `startTimeSeconds`/`endTimeSeconds` (tout est déjà dans `CitationResponse`).
+Mais aucun élément n'est cliquable : il n'existe **aucun endpoint** servant le contenu d'un
+document (`DocumentsController` expose métadonnées et suppression, jamais le fichier), et aucun
+composant de visualisation côté front. I-24 aggrave le tout : même en ajoutant l'endpoint,
+le fichier n'existe plus.
+
+**Pourquoi c'est grave.** La promesse d'un RAG avec citations est la **vérifiabilité** : « voici
+ma réponse, et voici où la vérifier ». Sans consultation de la source, la citation n'est qu'un
+décor — l'utilisateur ne peut ni contrôler une réponse douteuse, ni retrouver le contexte élargi
+d'un extrait. Tout l'investissement des Lots 1 (pagination, sections) et 2-bis (timestamps) reste
+sous-exploité au moment précis où il devait payer.
+
+**Correctif.** Un endpoint de streaming + deux visualiseurs natifs (zéro dépendance nouvelle) :
+
+```csharp
+/// <summary>Sert le fichier original d'un document (consultation des sources depuis les citations).</summary>
+[HttpGet("{id:guid}/content")]
+public async Task<IActionResult> GetContent(Guid id, CancellationToken ct)
+{
+    var doc = await documentRepository.GetByIdAsync(id, ct);
+    if (doc?.StoragePath is null) return NotFound();
+
+    // enableRangeProcessing : le navigateur peut demander des plages d'octets —
+    // indispensable pour que <video> fasse un seek sans télécharger tout le fichier.
+    return File(fileStorage.OpenRead(doc.StoragePath), doc.ContentType,
+        enableRangeProcessing: true);
+}
+```
+
+```tsx
+// PDF : le viewer natif du navigateur honore l'ancre #page= (Chromium/Firefox)
+<iframe src={`/api/documents/${c.documentId}/content#page=${c.pageNumber ?? 1}`} />
+
+// Vidéo : au clic sur la citation, on positionne la lecture au début de l'extrait cité
+videoRef.current.currentTime = c.startTimeSeconds ?? 0;
+videoRef.current.play();
+```
+
+> Si l'ancrage `#page=` du viewer natif s'avère insuffisant (comportements variables selon
+> navigateurs), le repli est `pdf.js` — mais ne l'introduire qu'à ce moment-là.
 
 ## C. Synthèse des « 1 ligne, gros impact »
 

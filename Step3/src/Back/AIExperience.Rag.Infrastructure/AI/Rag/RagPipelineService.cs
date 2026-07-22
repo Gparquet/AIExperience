@@ -13,6 +13,7 @@ using Microsoft.SemanticKernel.ChatCompletion;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace AIExperience.Rag.Infrastructure.AI.Rag
 {
@@ -121,25 +122,17 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
 
             sw.Stop();
 
-            // 6. Construction des citations depuis contextChunks (les chunks réellement vus par le LLM).
-            // On utilise rankedChunks uniquement pour récupérer le score de pertinence par chunk.
-            // Si la compression est active, contextChunks est un sous-ensemble de rankedChunks :
-            // citer rankedChunks entier produirait des citations pour des passages non injectés au LLM.
-            var scoreByChunkId = rankedChunks.ToDictionary(r => r.Chunk.Id, r => r.Score);
-            var citations = contextChunks.Select(chunk => Citation.Create(
-                Guid.Empty, chunk.DocumentId,
-                chunk.DocumentName ?? chunk.DocumentId.ToString(),
-                chunk.Content[..Math.Min(350, chunk.Content.Length)],
-                scoreByChunkId.TryGetValue(chunk.Id, out var s) ? s : 0.0,
-                chunk.PageNumber,
-                sectionTitle: chunk.SectionTitle,
-                chunkIndex: chunk.ChunkIndex,
-                startTime: chunk.StartTime,
-                endTime: chunk.EndTime)).ToList();
+            // 6. Construction puis filtrage des citations.
+            // On bâtit d'abord une citation par chunk du contexte, puis on ne conserve que les documents
+            // réellement référencés dans la réponse : sur un corpus hétérogène, la récupération large fait
+            // entrer des passages hors-sujet dans le contexte ; les citer tous produirait des « citations
+            // fantômes » (ex. une transcription vidéo listée en source alors que le LLM ne s'en est pas servi).
+            var answer = string.Join("\n", completionResult.Messages.Select(c => c.Text)) ?? string.Empty;
+            var citations = FilterCitationsByAnswer(BuildCitations(contextChunks, rankedChunks), answer);
 
             return new RagResponse
             {
-                Answer = string.Join("\n", completionResult.Messages.Select(c => c.Text)) ?? string.Empty,
+                Answer = answer,
                 Citations = citations,
                 StrategyUsed = strategy,
                 TotalTokens = (int)(completionResult.Usage?.TotalTokenCount ?? 0),
@@ -239,25 +232,17 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             sw.Stop();
 
             // 7. Citations + réponse finale (événement done).
-            // Même logique que AskAsync : citations depuis contextChunks (vus par le LLM).
-            var streamScoreByChunkId = rankedChunks.ToDictionary(r => r.Chunk.Id, r => r.Score);
-            var citations = contextChunks.Select(chunk => Citation.Create(
-                Guid.Empty, chunk.DocumentId,
-                chunk.DocumentName ?? chunk.DocumentId.ToString(),
-                chunk.Content[..Math.Min(350, chunk.Content.Length)],
-                streamScoreByChunkId.TryGetValue(chunk.Id, out var s) ? s : 0.0,
-                chunk.PageNumber,
-                sectionTitle: chunk.SectionTitle,
-                chunkIndex: chunk.ChunkIndex,
-                startTime: chunk.StartTime,
-                endTime: chunk.EndTime)).ToList();
+            // Même logique que AskAsync : on filtre les citations sur les documents réellement cités
+            // dans la réponse pour éliminer les citations fantômes (passages hors-sujet entrés dans le contexte).
+            var streamAnswer = totalText.ToString();
+            var citations = FilterCitationsByAnswer(BuildCitations(contextChunks, rankedChunks), streamAnswer);
 
             yield return new RagStreamChunk
             {
                 IsDone = true,
                 FinalResponse = new RagResponse
                 {
-                    Answer = totalText.ToString(),
+                    Answer = streamAnswer,
                     Citations = citations,
                     StrategyUsed = strategy,
                     TotalTokens = 0,
@@ -525,6 +510,73 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
 
             chatHistory.AddUserMessage(userPrompt);
             return chatHistory;
+        }
+
+        /// <summary>
+        /// Construit une citation par chunk du contexte réellement injecté au LLM.
+        /// Le score de pertinence est récupéré depuis <paramref name="rankedChunks"/> (indexé par Id de chunk) :
+        /// si la compression est active, <paramref name="contextChunks"/> est un sous-ensemble de rankedChunks,
+        /// donc on ne cite jamais un passage qui n'a pas été envoyé au modèle.
+        /// </summary>
+        private static List<Citation> BuildCitations(
+            IReadOnlyList<DocumentChunk> contextChunks,
+            IReadOnlyList<(DocumentChunk Chunk, double Score)> rankedChunks)
+        {
+            var scoreByChunkId = rankedChunks.ToDictionary(r => r.Chunk.Id, r => r.Score);
+            return contextChunks.Select(chunk => Citation.Create(
+                Guid.Empty, chunk.DocumentId,
+                chunk.DocumentName ?? chunk.DocumentId.ToString(),
+                chunk.Content[..Math.Min(350, chunk.Content.Length)],
+                scoreByChunkId.TryGetValue(chunk.Id, out var s) ? s : 0.0,
+                chunk.PageNumber,
+                sectionTitle: chunk.SectionTitle,
+                chunkIndex: chunk.ChunkIndex,
+                startTime: chunk.StartTime,
+                endTime: chunk.EndTime)).ToList();
+        }
+
+        /// <summary>
+        /// Ne conserve que les citations dont le document est réellement référencé dans la réponse du LLM.
+        /// Le prompt système impose le format [SOURCE: NomDocument, p.X] : on extrait les noms de documents
+        /// cités puis on filtre les citations du contexte. Cela élimine les « citations fantômes » — des
+        /// extraits injectés dans le contexte (récupération large sur corpus hétérogène) mais que le modèle
+        /// n'a jamais utilisés, comme une transcription vidéo remontée à tort pour une question sur un CV.
+        /// </summary>
+        /// <remarks>
+        /// Deux replis de sécurité évitent de masquer des sources légitimes :
+        /// si la réponse ne contient aucune balise [SOURCE:] exploitable (LLM ayant mal formaté), ou si le
+        /// filtrage éliminerait absolument toutes les citations, on retourne la liste d'origine inchangée.
+        /// </remarks>
+        private static readonly Regex SourceTagRegex = new(
+            @"\[SOURCE:\s*([^,\]]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static List<Citation> FilterCitationsByAnswer(List<Citation> citations, string answer)
+        {
+            if (citations.Count == 0 || string.IsNullOrWhiteSpace(answer))
+                return citations;
+
+            // Extraction des noms de documents cités : texte entre "[SOURCE:" et la première virgule ou "]"
+            // (ex. "[SOURCE: Mon_CV.pdf, p.1]" → "Mon_CV.pdf").
+            var citedNames = SourceTagRegex.Matches(answer)
+                .Select(m => m.Groups[1].Value.Trim())
+                .Where(n => n.Length > 0)
+                .ToList();
+
+            // Repli : le LLM n'a produit aucune balise exploitable → on ne filtre pas.
+            if (citedNames.Count == 0)
+                return citations;
+
+            // Une citation est conservée si son DocumentName correspond (dans un sens ou l'autre) à un nom cité.
+            // La correspondance « contient » tolère les abréviations du LLM (« Mon_CV » pour « Mon_CV.pdf »).
+            var filtered = citations
+                .Where(c => citedNames.Any(name =>
+                    c.DocumentName.Contains(name, StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains(c.DocumentName, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            // Repli : si le LLM a cité des noms ne correspondant à aucun document du contexte, on préfère
+            // retourner les citations d'origine plutôt qu'une liste vide trompeuse.
+            return filtered.Count > 0 ? filtered : citations;
         }
     }
 }
