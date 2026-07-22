@@ -90,6 +90,8 @@ export interface AskQuestionRequest {
   useRag?: boolean;
   /** Prompt système personnalisé. Si absent, le back-end utilise le prompt par défaut. */
   systemPrompt?: string;
+  /** Session de conversation à poursuivre. Absent = nouvelle conversation. */
+  sessionId?: string;
 }
 
 export interface SystemPromptsResponse {
@@ -103,6 +105,34 @@ export interface AskQuestionResponse {
   strategyUsed: string;
   totalTokens: number;
   durationMs: number;
+  /** Session à laquelle appartient cet échange (nouvelle ou réutilisée). */
+  sessionId: string;
+}
+
+/** Résumé d'une conversation pour la liste latérale. */
+export interface ChatSessionSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
+/** Un message d'une conversation rechargée depuis l'historique. */
+export interface ChatMessageDetail {
+  role: string;
+  content: string;
+  citations?: CitationResponse[] | null;
+  strategyUsed?: string | null;
+  tokensUsed: number;
+  durationMs: number;
+  createdAt: string;
+}
+
+/** Détail complet d'une conversation. */
+export interface ChatSessionDetail {
+  id: string;
+  title: string;
+  messages: ChatMessageDetail[];
 }
 
 export type StreamEvent =
