@@ -21,6 +21,10 @@ public sealed class CitationConfiguration : IEntityTypeConfiguration<Citation>
         builder.Property(c => c.DocumentName).HasColumnName("document_name").HasMaxLength(255).IsRequired();
         builder.Property(c => c.Excerpt).HasColumnName("excerpt").IsRequired();
         builder.Property(c => c.PageNumber).HasColumnName("page_number");
+        // La colonne score existe dans init.sql mais n'était pas mappée : sans cette ligne, EF génère
+        // l'identifiant "Score" (casse préservée, entre guillemets) qui ne correspond pas à la colonne
+        // "score" — l'INSERT des citations échouerait silencieusement une fois la persistance branchée.
+        builder.Property(c => c.Score).HasColumnName("score");
 
         builder.HasOne(c => c.Message)
             .WithMany(m => m.Citations)
