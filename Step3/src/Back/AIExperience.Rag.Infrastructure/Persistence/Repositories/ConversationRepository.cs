@@ -1,5 +1,6 @@
 ﻿using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
+using AIExperience.Rag.Domain.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace AIExperience.Rag.Infrastructure.Persistence.Repositories;
@@ -13,6 +14,7 @@ public sealed class ConversationRepository(AppDbContext context) : IConversation
     public async Task<ConversationSession?> GetSessionByIdAsync(Guid sessionId, CancellationToken ct = default)
         => await context.ConversationSessions
             .Include(s => s.Messages)
+                .ThenInclude(m => m.Citations)
             .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
 
     /// <inheritdoc/>
@@ -21,6 +23,15 @@ public sealed class ConversationRepository(AppDbContext context) : IConversation
             .Where(s => s.UserId == userId)
             .Include(s => s.Messages)
             .OrderByDescending(s => s.UpdatedAt)
+            .ToListAsync(ct);
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<ConversationSessionSummary>> GetSessionSummariesAsync(string userId, CancellationToken ct = default)
+        => await context.ConversationSessions
+            .Where(s => s.UserId == userId)
+            .OrderByDescending(s => s.UpdatedAt)
+            // Projection SQL directe : le COUNT des messages est calculé côté base, sans matérialiser les messages.
+            .Select(s => new ConversationSessionSummary(s.Id, s.Title, s.UpdatedAt, s.Messages.Count))
             .ToListAsync(ct);
 
     /// <inheritdoc/>

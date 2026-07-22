@@ -1,4 +1,5 @@
 ﻿using AIExperience.Rag.Domain.Entities;
+using AIExperience.Rag.Domain.Models;
 
 namespace AIExperience.Rag.Domain.Interfaces.Repositories;
 
@@ -16,6 +17,11 @@ public interface IConversationRepository
     /// <param name="userId">Identifiant de l'utilisateur.</param>
     /// <param name="ct">Jeton d'annulation.</param>
     Task<IEnumerable<ConversationSession>> GetSessionsByUserIdAsync(string userId, CancellationToken ct = default);
+
+    /// <summary>Récupère les résumés des sessions d'un utilisateur (sans charger les messages), triés par activité récente.</summary>
+    /// <param name="userId">Identifiant de l'utilisateur.</param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    Task<IReadOnlyList<ConversationSessionSummary>> GetSessionSummariesAsync(string userId, CancellationToken ct = default);
 
     /// <summary>Récupère les N derniers messages d'une session, triés par date croissante.</summary>
     /// <param name="sessionId">Identifiant de la session.</param>
