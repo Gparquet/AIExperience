@@ -1,4 +1,5 @@
 ﻿using AIExperience.Rag.Domain.Entities;
+using AIExperience.Rag.Domain.Models;
 
 namespace AIExperience.Rag.Domain.Interfaces.Repositories;
 
@@ -16,6 +17,11 @@ public interface IConversationRepository
     /// <param name="userId">Identifiant de l'utilisateur.</param>
     /// <param name="ct">Jeton d'annulation.</param>
     Task<IEnumerable<ConversationSession>> GetSessionsByUserIdAsync(string userId, CancellationToken ct = default);
+
+    /// <summary>Récupère les résumés des sessions d'un utilisateur (sans charger les messages), triés par activité récente.</summary>
+    /// <param name="userId">Identifiant de l'utilisateur.</param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    Task<IReadOnlyList<ConversationSessionSummary>> GetSessionSummariesAsync(string userId, CancellationToken ct = default);
 
     /// <summary>Récupère les N derniers messages d'une session, triés par date croissante.</summary>
     /// <param name="sessionId">Identifiant de la session.</param>
@@ -37,4 +43,16 @@ public interface IConversationRepository
     /// <param name="session">Session avec les modifications à appliquer.</param>
     /// <param name="ct">Jeton d'annulation.</param>
     Task UpdateSessionAsync(ConversationSession session, CancellationToken ct = default);
+
+    /// <summary>Supprime une session (les messages et citations associés sont supprimés en cascade côté base).</summary>
+    /// <param name="sessionId">Identifiant de la session à supprimer.</param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    /// <returns><c>false</c> si la session n'existe pas.</returns>
+    Task<bool> DeleteSessionAsync(Guid sessionId, CancellationToken ct = default);
+
+    /// <summary>Supprime toutes les sessions d'un utilisateur (cascade sur messages et citations).</summary>
+    /// <param name="userId">Identifiant de l'utilisateur.</param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    /// <returns>Nombre de sessions supprimées.</returns>
+    Task<int> DeleteAllSessionsAsync(string userId, CancellationToken ct = default);
 }

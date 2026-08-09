@@ -1,4 +1,4 @@
-import type { AskQuestionRequest, AskQuestionResponse, CheckDuplicateResponse, DocumentResponse, StreamEvent, SystemPromptsResponse, VideoTranscriptionResponse } from '../types';
+import type { AskQuestionRequest, AskQuestionResponse, ChatSessionDetail, ChatSessionSummary, CheckDuplicateResponse, DocumentResponse, StreamEvent, SystemPromptsResponse, VideoTranscriptionResponse } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -101,6 +101,16 @@ export const api = {
   },
   chat: {
     getSystemPrompts: () => request<SystemPromptsResponse>('/api/chat/system-prompts'),
+
+    // Liste des conversations de l'utilisateur courant (sidebar), triées par activité récente côté back-end.
+    listSessions: () => request<ChatSessionSummary[]>('/api/chat/sessions'),
+
+    // Détail d'une conversation (titre + messages + citations) pour reprise depuis l'historique.
+    getSession: (id: string) => request<ChatSessionDetail>(`/api/chat/sessions/${id}`),
+
+    // Suppression d'une conversation, ou de toutes les conversations de l'utilisateur courant.
+    deleteSession: (id: string) => request<void>(`/api/chat/sessions/${id}`, { method: 'DELETE' }),
+    deleteAllSessions: () => request<void>('/api/chat/sessions', { method: 'DELETE' }),
 
     ask: (payload: AskQuestionRequest) =>
       request<AskQuestionResponse>('/api/chat/ask', {

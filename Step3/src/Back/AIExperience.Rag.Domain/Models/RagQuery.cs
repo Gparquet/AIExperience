@@ -47,4 +47,11 @@ public sealed record RagQuery
 
     /// <summary>Nombre maximum de tours de conversation à inclure dans le contexte.</summary>
     public int MaxHistoryTurns { get; init; } = 5;
+
+    /// <summary>
+    /// Propriétaire de la session, transmis par la couche de composition (contrôleur) depuis
+    /// <c>DevAuthOptions.DefaultUserId</c> tant que l'authentification n'est pas implémentée.
+    /// Utilisé à la création d'une nouvelle session de conversation.
+    /// </summary>
+    public string UserId { get; init; } = string.Empty;
 }
