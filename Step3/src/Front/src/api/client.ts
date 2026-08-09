@@ -108,6 +108,10 @@ export const api = {
     // Détail d'une conversation (titre + messages + citations) pour reprise depuis l'historique.
     getSession: (id: string) => request<ChatSessionDetail>(`/api/chat/sessions/${id}`),
 
+    // Suppression d'une conversation, ou de toutes les conversations de l'utilisateur courant.
+    deleteSession: (id: string) => request<void>(`/api/chat/sessions/${id}`, { method: 'DELETE' }),
+    deleteAllSessions: () => request<void>('/api/chat/sessions', { method: 'DELETE' }),
+
     ask: (payload: AskQuestionRequest) =>
       request<AskQuestionResponse>('/api/chat/ask', {
         method: 'POST',
