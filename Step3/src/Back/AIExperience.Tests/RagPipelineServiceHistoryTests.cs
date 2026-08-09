@@ -58,6 +58,18 @@ public sealed class RagPipelineServiceHistoryTests
         }
 
         public Task UpdateSessionAsync(ConversationSession session, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<bool> DeleteSessionAsync(Guid sessionId, CancellationToken ct = default)
+        {
+            var removed = Sessions.RemoveAll(s => s.Id == sessionId) > 0;
+            return Task.FromResult(removed);
+        }
+
+        public Task<int> DeleteAllSessionsAsync(string userId, CancellationToken ct = default)
+        {
+            var removed = Sessions.RemoveAll(s => s.UserId == userId);
+            return Task.FromResult(removed);
+        }
     }
 
     /// <summary>Faux UnitOfWork : compte les commits et peut simuler un échec de persistance.</summary>

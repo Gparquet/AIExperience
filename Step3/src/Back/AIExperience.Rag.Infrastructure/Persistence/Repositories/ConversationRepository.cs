@@ -58,4 +58,26 @@ public sealed class ConversationRepository(AppDbContext context) : IConversation
         context.ConversationSessions.Update(session);
         return Task.CompletedTask;
     }
+
+    /// <inheritdoc/>
+    public async Task<bool> DeleteSessionAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        var session = await context.ConversationSessions.FindAsync([sessionId], ct);
+        if (session is null)
+            return false;
+
+        context.ConversationSessions.Remove(session);
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> DeleteAllSessionsAsync(string userId, CancellationToken ct = default)
+    {
+        var sessions = await context.ConversationSessions
+            .Where(s => s.UserId == userId)
+            .ToListAsync(ct);
+
+        context.ConversationSessions.RemoveRange(sessions);
+        return sessions.Count;
+    }
 }

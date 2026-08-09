@@ -1,4 +1,6 @@
 using AIExperience.Rag.Application.Common;
+using AIExperience.Rag.Application.Common.Cqrs;
+using AIExperience.Rag.Application.Conversation.Command;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services.AI;
 using AIExperience.Rag.Domain.Models;
@@ -16,6 +18,7 @@ namespace AIExperience.Web.Api.Controllers;
 public class ChatController(
     IRagPipelineService ragPipelineService,
     IConversationRepository conversationRepository,
+    ICommandDispatcher dispatcher,
     IOptions<DevAuthOptions> devAuthOptions) : ControllerBase
 {
     /// <summary>Retourne les prompts système par défaut — le front-end les charge au démarrage pour éviter toute duplication.</summary>
@@ -65,6 +68,31 @@ public class ChatController(
             .ToList();
 
         return Ok(new ChatSessionDetailResponse(session.Id, session.Title, messages));
+    }
+
+    /// <summary>Supprime une conversation. 404 si absente ou d'un autre utilisateur.</summary>
+    [HttpDelete("sessions/{id:guid}")]
+    public async Task<IActionResult> DeleteSession(Guid id, CancellationToken cancellationToken)
+    {
+        var deleted = await dispatcher.SendAsync(new DeleteSessionCommand
+        {
+            SessionId = id,
+            UserId = devAuthOptions.Value.DefaultUserId
+        }, cancellationToken);
+
+        return deleted ? NoContent() : NotFound();
+    }
+
+    /// <summary>Supprime toutes les conversations de l'utilisateur courant.</summary>
+    [HttpDelete("sessions")]
+    public async Task<IActionResult> DeleteAllSessions(CancellationToken cancellationToken)
+    {
+        await dispatcher.SendAsync(new DeleteAllSessionsCommand
+        {
+            UserId = devAuthOptions.Value.DefaultUserId
+        }, cancellationToken);
+
+        return NoContent();
     }
 
     [HttpPost("ask")]
