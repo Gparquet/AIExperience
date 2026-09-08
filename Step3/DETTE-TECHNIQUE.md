@@ -134,15 +134,16 @@ back doit être répercutée à la main, et l'oubli ne se voit qu'à l'exécutio
 
 ## D — Dette de code et incohérences
 
-### D-1. Configuration mensongère : le cache
-`appsettings.json` déclare `"Cache": { "Enabled": true }` alors qu'**aucune implémentation de cache
-n'existe**. Un lecteur en conclut légitimement que le cache fonctionne.
-→ Passer le flag à `false` immédiatement (une ligne), et implémenter ou retirer la section ensuite.
+### D-1. ~~Configuration mensongère : le cache~~ — corrigé
+`"Cache": { "Enabled": true }` a été passé à `false` dans les deux `appsettings.json` (Web.Api et
+App.Console), puisqu'aucune implémentation de cache n'existe. Implémenter ou retirer la section
+reste à faire.
 
-### D-2. Stratégie par défaut incohérente
-Le DTO `AskQuestionRequest` a `RagStrategy.HyDE` comme valeur par défaut, alors que
-`RagOptions.DefaultStrategy` vaut `Adaptive`. Un client qui n'envoie pas `strategy` n'obtient donc
-pas la stratégie configurée — et le front n'en envoie pas.
+### D-2. ~~Stratégie par défaut incohérente~~ — corrigé
+Le DTO `AskQuestionRequest` avait `RagStrategy.HyDE` comme valeur par défaut, alors que
+`RagOptions.DefaultStrategy` vaut `Adaptive`. Le défaut du DTO est désormais `RagStrategy.Adaptive`,
+pour qu'un client qui n'envoie pas `strategy` (comme le front) obtienne bien la stratégie
+configurée.
 
 ### D-3. Avertissements de compilation non traités
 Deux `CS8602` (déréférencement d'une éventuelle référence null) dans

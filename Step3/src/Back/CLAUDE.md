@@ -247,10 +247,6 @@ depuis les helpers privés — c'est ce qui garantit un seul point de persistanc
 `SystemPrompt` et `SessionId` (null = nouvelle conversation). `AskQuestionResponse` renvoie
 toujours le `SessionId` utilisé.
 
-> ⚠️ Le défaut de `Strategy` dans le DTO est `HyDE`, **pas** la valeur `DefaultStrategy` de
-> `appsettings.json`. Un client qui n'envoie pas `strategy` n'obtient donc pas la stratégie
-> configurée — incohérence connue.
-
 ### `DocumentsController` — `/api/documents`
 
 | Méthode | Route | Rôle |
