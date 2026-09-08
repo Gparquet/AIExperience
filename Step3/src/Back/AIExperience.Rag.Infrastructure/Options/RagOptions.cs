@@ -22,6 +22,9 @@ public sealed class RagOptions
 
     /// <summary>Options du cache Redis des réponses.</summary>
     public CacheOptions Cache { get; set; } = new();
+
+    /// <summary>Options de la condensation de question multi-tour.</summary>
+    public CondensationOptions Condensation { get; set; } = new();
 }
 
 /// <summary>Options pour la technique HyDE (Hypothetical Document Embeddings).</summary>
@@ -99,6 +102,18 @@ public sealed class ContextCompressionOptions
     /// (Constat R-6 du plan Lot 0)
     /// </summary>
     public bool Enabled { get; set; } = false;
+}
+
+/// <summary>Options pour la condensation de question à partir de l'historique de conversation.</summary>
+public sealed class CondensationOptions
+{
+    /// <summary>
+    /// Active ou désactive la condensation de question multi-tour. Par défaut : <c>true</c>.
+    /// Sans historique de conversation, la condensation ne se déclenche de toute façon jamais
+    /// (garde-fou "pas de condensation au premier tour") — ce flag permet de la couper explicitement
+    /// si l'appel LLM supplémentaire s'avère trop coûteux en latence sur une infrastructure donnée.
+    /// </summary>
+    public bool Enabled { get; set; } = true;
 }
 
 /// <summary>Options pour le cache Redis des réponses RAG.</summary>

@@ -18,7 +18,8 @@ using System.Text.RegularExpressions;
 namespace AIExperience.Rag.Infrastructure.AI.Rag
 {
     /// <summary>
-    /// Orchestre le pipeline RAG complet en 6 étapes :
+    /// Orchestre le pipeline RAG complet :
+    /// 0. Condensation de la question en question autonome (si un historique de conversation existe)
     /// 1. Résolution de stratégie (Direct | HyDE | Fusion | Adaptive)
     /// 2. Récupération des chunks (stratégie résolue → pgvector)
     /// 3. Reclassement par pertinence réelle (Reranker LLM)
@@ -34,6 +35,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
         IMultiQueryService multiQueryService,
         IRerankerService rerankerService,
         IContextCompressorService contextCompressorService,
+        IQueryCondensationService queryCondensationService,
         IConversationRepository conversationRepository,
         IUnitOfWork unitOfWork,
         IOptions<RagOptions> options,
@@ -57,6 +59,29 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                     routedStrategy, resolvedStrategy);
 
             return resolvedStrategy;
+        }
+
+        /// <summary>
+        /// Condense une question de suivi elliptique (ex. « et pour les week-ends ? ») en question
+        /// autonome à partir de l'historique, pour que la récupération (routage, HyDE, multi-query,
+        /// recherche lexicale, reranking, compression) porte sur l'intention complète plutôt que sur
+        /// une question tronquée. Retourne <paramref name="query"/> inchangée — jamais une copie — si
+        /// la condensation est désactivée en configuration, si l'historique n'est pas inclus, ou au
+        /// premier tour d'une conversation (aucune session, ou session sans historique) : un petit
+        /// modèle peut dégrader une question déjà autonome, et l'appel serait de toute façon inutile.
+        /// </summary>
+        private async Task<RagQuery> CondenseQueryAsync(RagQuery query, RagOptions ragOptions, CancellationToken ct)
+        {
+            if (!ragOptions.Condensation.Enabled || !query.IncludeHistory || query.SessionId == Guid.Empty)
+                return query;
+
+            var history = (await conversationRepository.GetMessagesAsync(
+                query.SessionId, query.MaxHistoryTurns, ct)).ToList();
+            if (history.Count == 0)
+                return query;
+
+            var condensedQuestion = await queryCondensationService.CondenseAsync(query.Question, history, ct);
+            return condensedQuestion == query.Question ? query : query with { Question = condensedQuestion };
         }
 
         /// <inheritdoc/>
@@ -87,16 +112,22 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
         /// </summary>
         private async Task<RagResponse> RunRagPipelineAsync(RagQuery query, RagOptions ragOptions, Stopwatch sw, CancellationToken ct)
         {
+            // Condensation de la question, AVANT la résolution de stratégie. La question ORIGINALE
+            // (query, capturée ci-dessus) reste utilisée pour le prompt final (BuildChatHistoryAsync)
+            // et la persistance — seule retrievalQuery.Question (potentiellement réécrite) irrigue les
+            // étapes de récupération ci-dessous.
+            var retrievalQuery = await CondenseQueryAsync(query, ragOptions, ct);
+
             // 1. Résolution de la stratégie (routage Adaptive + repli si HyDE/Fusion désactivés)
-            var strategy = await ResolveStrategyAsync(query, ragOptions, ct);
+            var strategy = await ResolveStrategyAsync(retrievalQuery, ragOptions, ct);
 
             // 2. Récupération des chunks selon la stratégie résolue
-            var rankedChunks = await RetrieveChunksAsync(query, strategy, ragOptions, ct);
+            var rankedChunks = await RetrieveChunksAsync(retrievalQuery, strategy, ragOptions, ct);
 
             // 3. Reclassement par pertinence réelle — corrige les faux positifs du cosinus
             if (ragOptions.Reranker.Enabled && rankedChunks.Count > 0)
                 rankedChunks = await rerankerService.RerankAsync(
-                    query.Question, rankedChunks, ragOptions.Reranker.TopKAfterRerank, ct);
+                    retrievalQuery.Question, rankedChunks, ragOptions.Reranker.TopKAfterRerank, ct);
 
             // 4. Compression du contexte — réduit les tokens envoyés au LLM en conservant les phrases pertinentes.
             //    Fallback sur les chunks bruts si la compression est désactivée ou retourne vide.
@@ -104,7 +135,7 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
             if (ragOptions.ContextCompression.Enabled && rankedChunks.Count > 0)
             {
                 var compressed = await contextCompressorService.CompressAsync(
-                    query.Question, rankedChunks.Select(r => r.Chunk), ct);
+                    retrievalQuery.Question, rankedChunks.Select(r => r.Chunk), ct);
                 contextChunks = compressed.Count > 0 ? compressed : rankedChunks.Select(r => r.Chunk).ToList();
             }
             else
@@ -186,23 +217,28 @@ namespace AIExperience.Rag.Infrastructure.AI.Rag
                 yield break;
             }
 
+            // Condensation de la question, AVANT la résolution de stratégie (même logique qu'en
+            // non-streaming). La question ORIGINALE (query) reste utilisée pour le prompt final et
+            // la persistance — seule retrievalQuery.Question irrigue les étapes de récupération ci-dessous.
+            var retrievalQuery = await CondenseQueryAsync(query, ragOptions, ct);
+
             // 1. Résolution de la stratégie (routage Adaptive + repli si HyDE/Fusion désactivés, R-17)
-            var strategy = await ResolveStrategyAsync(query, ragOptions, ct);
+            var strategy = await ResolveStrategyAsync(retrievalQuery, ragOptions, ct);
 
             // 2. Récupération des chunks selon la stratégie résolue
-            var rankedChunks = await RetrieveChunksAsync(query, strategy, ragOptions, ct);
+            var rankedChunks = await RetrieveChunksAsync(retrievalQuery, strategy, ragOptions, ct);
 
             // 3. Reclassement par pertinence réelle
             if (ragOptions.Reranker.Enabled && rankedChunks.Count > 0)
                 rankedChunks = await rerankerService.RerankAsync(
-                    query.Question, rankedChunks, ragOptions.Reranker.TopKAfterRerank, ct);
+                    retrievalQuery.Question, rankedChunks, ragOptions.Reranker.TopKAfterRerank, ct);
 
             // 4. Compression du contexte
             IReadOnlyList<DocumentChunk> contextChunks;
             if (ragOptions.ContextCompression.Enabled && rankedChunks.Count > 0)
             {
                 var compressed = await contextCompressorService.CompressAsync(
-                    query.Question, rankedChunks.Select(r => r.Chunk), ct);
+                    retrievalQuery.Question, rankedChunks.Select(r => r.Chunk), ct);
                 contextChunks = compressed.Count > 0 ? compressed : rankedChunks.Select(r => r.Chunk).ToList();
             }
             else

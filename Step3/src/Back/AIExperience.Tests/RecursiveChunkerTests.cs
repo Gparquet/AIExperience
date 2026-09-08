@@ -78,7 +78,7 @@ public sealed class RecursiveChunkerTests
         var result = _sut.Chunk(text);
 
         foreach (var chunk in result)
-            chunk.Content.Length.Should().BeLessOrEqualTo(
+            chunk.Content.Length.Should().BeLessThanOrEqualTo(
                 MaxChunkSize + 200,
                 $"le chunk '{chunk.Content[..Math.Min(50, chunk.Content.Length)]}...' dépasse la tolérance");
     }
@@ -122,7 +122,7 @@ public sealed class RecursiveChunkerTests
         const string text = "# Introduction\n\nCeci est le contenu de l'introduction de ce document.";
         var result = _sut.Chunk(text);
 
-        result.Should().HaveCountGreaterOrEqualTo(1, "le contenu après le titre doit produire au moins un chunk");
+        result.Should().HaveCountGreaterThanOrEqualTo(1, "le contenu après le titre doit produire au moins un chunk");
         result.Should().AllSatisfy(c =>
             c.SectionTitle.Should().Be("Introduction",
                 "le titre Markdown # doit être propagé comme SectionTitle"));

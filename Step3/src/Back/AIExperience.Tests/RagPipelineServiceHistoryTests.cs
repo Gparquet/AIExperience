@@ -3,6 +3,7 @@ using AIExperience.Rag.Domain.Entities;
 using AIExperience.Rag.Domain.Enums;
 using AIExperience.Rag.Domain.Interfaces.Repositories;
 using AIExperience.Rag.Domain.Interfaces.Services;
+using AIExperience.Rag.Domain.Interfaces.Services.AI;
 using AIExperience.Rag.Domain.Models;
 using AIExperience.Rag.Infrastructure.AI.Rag;
 using AIExperience.Rag.Infrastructure.Options;
@@ -143,12 +144,44 @@ public sealed class RagPipelineServiceHistoryTests
             => Task.FromResult<IReadOnlyList<float[]>>([]);
     }
 
+    /// <summary>Variante du faux service d'embedding qui capture le dernier texte embeddé : vérifie
+    /// que la récupération reçoit bien la question condensée, et non la question brute.</summary>
+    private sealed class CapturingEmbeddingService : IEmbeddingService
+    {
+        public string? LastText { get; private set; }
+
+        public Task<float[]> EmbedAsync(string text, EmbeddingTaskType taskType, CancellationToken ct = default)
+        {
+            LastText = text;
+            return Task.FromResult(new float[768]);
+        }
+
+        public Task<IReadOnlyList<float[]>> EmbedBatchAsync(IEnumerable<string> texts, EmbeddingTaskType taskType, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<float[]>>([]);
+    }
+
+    /// <summary>Faux service de condensation renvoyant toujours la même question condensée canée.</summary>
+    private sealed class FakeQueryCondensationService(string condensed) : IQueryCondensationService
+    {
+        public Task<string> CondenseAsync(string question, IReadOnlyList<ChatMessage> history, CancellationToken ct = default)
+            => Task.FromResult(condensed);
+    }
+
+    /// <summary>Faux service de condensation qui échoue si on l'appelle — sert à prouver qu'un garde-fou
+    /// (premier tour, condensation désactivée) empêche bien l'appel LLM correspondant.</summary>
+    private sealed class ThrowingQueryCondensationService : IQueryCondensationService
+    {
+        public Task<string> CondenseAsync(string question, IReadOnlyList<ChatMessage> history, CancellationToken ct = default)
+            => throw new InvalidOperationException("La condensation ne devait pas être appelée dans ce scénario.");
+    }
+
     /// <summary>Construit un service en mode "LLM direct" : seules la session et le LLM sont exercés, le reste est inutile (null!).</summary>
     private static RagPipelineService CreateDirectLlmService(
         FakeConversationRepository repo, FakeUnitOfWork uow, FakeChatClient chat)
         => new(
             vectorStoreService: null!, embeddingService: null!, adaptiveQueryRouter: null!,
             hydeService: null!, multiQueryService: null!, rerankerService: null!, contextCompressorService: null!,
+            queryCondensationService: null!,
             conversationRepository: repo, unitOfWork: uow,
             options: Options.Create(new RagOptions()), chatClient: chat,
             logger: NullLogger<RagPipelineService>.Instance);
@@ -212,6 +245,7 @@ public sealed class RagPipelineServiceHistoryTests
             vectorStoreService: new FakeVectorStoreService(chunk), embeddingService: new FakeEmbeddingService(),
             adaptiveQueryRouter: null!, hydeService: null!, multiQueryService: null!,
             rerankerService: null!, contextCompressorService: null!,
+            queryCondensationService: null!,
             conversationRepository: repo, unitOfWork: new FakeUnitOfWork(),
             options: Options.Create(new RagOptions()),
             chatClient: new FakeChatClient("Le chien dort [SOURCE: TestDoc.pdf, p.1]."),
@@ -252,5 +286,98 @@ public sealed class RagPipelineServiceHistoryTests
         repo.Messages.Should().Contain(m => m.Role == MessageRole.User && m.Content == "Question streamée");
         repo.Messages.Should().Contain(m => m.Role == MessageRole.Assistant && m.Content == "Réponse streamée");
         uow.SaveChangesCallCount.Should().Be(1);
+    }
+
+    // --- Condensation de question multi-tour ---
+
+    [Fact]
+    public async Task AskAsync_ModeRag_AvecHistorique_CondenseLaQuestionPourLaRecuperationMaisPersisteLOriginale()
+    {
+        var chunk = DocumentChunk.Create(
+            Guid.NewGuid(), "Les week-ends, le magasin ouvre à 10h.", chunkIndex: 0, embeddingDimensions: 768,
+            pageNumber: 1, documentName: "Horaires.pdf");
+        var repo = new FakeConversationRepository();
+        var session = ConversationSession.Create("user-1", "Horaires");
+        repo.Sessions.Add(session);
+        repo.Messages.Add(ChatMessage.CreateUserMessage(session.Id, "Quels sont les horaires du magasin ?"));
+        repo.Messages.Add(ChatMessage.CreateAssistantMessage(
+            session.Id, "Le magasin ouvre à 9h en semaine.", 10, RagStrategy.Direct, 100));
+
+        var embeddingService = new CapturingEmbeddingService();
+        var service = new RagPipelineService(
+            vectorStoreService: new FakeVectorStoreService(chunk), embeddingService: embeddingService,
+            adaptiveQueryRouter: null!, hydeService: null!, multiQueryService: null!,
+            rerankerService: null!, contextCompressorService: null!,
+            queryCondensationService: new FakeQueryCondensationService("Quels sont les horaires du magasin le week-end ?"),
+            conversationRepository: repo, unitOfWork: new FakeUnitOfWork(),
+            options: Options.Create(new RagOptions()),
+            chatClient: new FakeChatClient("Le magasin ouvre à 10h le week-end [SOURCE: Horaires.pdf, p.1]."),
+            logger: NullLogger<RagPipelineService>.Instance);
+
+        var response = await service.AskAsync(new RagQuery
+        {
+            Question = "et le week-end ?", UserId = "user-1", SessionId = session.Id, Strategy = RagStrategy.Direct
+        });
+
+        // La récupération (ici : l'embedding de la question) reçoit la question condensée...
+        embeddingService.LastText.Should().Be("Quels sont les horaires du magasin le week-end ?");
+        // ...mais le message persisté et la réponse restent liés à la question ORIGINALE de l'utilisateur.
+        repo.Messages.Should().Contain(m => m.Role == MessageRole.User && m.Content == "et le week-end ?");
+        response.Answer.Should().Contain("10h");
+    }
+
+    [Fact]
+    public async Task AskAsync_PremierTourSansHistorique_NAppellePasLaCondensation()
+    {
+        var chunk = DocumentChunk.Create(
+            Guid.NewGuid(), "Contenu de test.", chunkIndex: 0, embeddingDimensions: 768, documentName: "Doc.pdf");
+        var repo = new FakeConversationRepository();
+        var service = new RagPipelineService(
+            vectorStoreService: new FakeVectorStoreService(chunk), embeddingService: new FakeEmbeddingService(),
+            adaptiveQueryRouter: null!, hydeService: null!, multiQueryService: null!,
+            rerankerService: null!, contextCompressorService: null!,
+            queryCondensationService: new ThrowingQueryCondensationService(),
+            conversationRepository: repo, unitOfWork: new FakeUnitOfWork(),
+            options: Options.Create(new RagOptions()),
+            chatClient: new FakeChatClient("Réponse [SOURCE: Doc.pdf]."),
+            logger: NullLogger<RagPipelineService>.Instance);
+
+        // Aucun SessionId fourni (premier tour) : la condensation ne doit jamais être invoquée,
+        // même si le service configuré échouerait à l'appel.
+        var act = () => service.AskAsync(new RagQuery
+        {
+            Question = "Bonjour", UserId = "user-1", Strategy = RagStrategy.Direct
+        });
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task AskAsync_CondensationDesactiveeEnConfiguration_IgnoreLeServiceDeCondensation()
+    {
+        var chunk = DocumentChunk.Create(
+            Guid.NewGuid(), "Contenu de test.", chunkIndex: 0, embeddingDimensions: 768, documentName: "Doc.pdf");
+        var repo = new FakeConversationRepository();
+        var session = ConversationSession.Create("user-1", "Session");
+        repo.Sessions.Add(session);
+        repo.Messages.Add(ChatMessage.CreateUserMessage(session.Id, "Première question"));
+        repo.Messages.Add(ChatMessage.CreateAssistantMessage(session.Id, "Première réponse", 5, RagStrategy.Direct, 50));
+
+        var service = new RagPipelineService(
+            vectorStoreService: new FakeVectorStoreService(chunk), embeddingService: new FakeEmbeddingService(),
+            adaptiveQueryRouter: null!, hydeService: null!, multiQueryService: null!,
+            rerankerService: null!, contextCompressorService: null!,
+            queryCondensationService: new ThrowingQueryCondensationService(),
+            conversationRepository: repo, unitOfWork: new FakeUnitOfWork(),
+            options: Options.Create(new RagOptions { Condensation = new CondensationOptions { Enabled = false } }),
+            chatClient: new FakeChatClient("Réponse [SOURCE: Doc.pdf]."),
+            logger: NullLogger<RagPipelineService>.Instance);
+
+        var act = () => service.AskAsync(new RagQuery
+        {
+            Question = "et ensuite ?", UserId = "user-1", SessionId = session.Id, Strategy = RagStrategy.Direct
+        });
+
+        await act.Should().NotThrowAsync();
     }
 }

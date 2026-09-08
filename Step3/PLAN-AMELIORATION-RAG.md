@@ -33,6 +33,10 @@
 > original supprimé après ingestion — les sources ne sont plus consultables) et **R-19** (citations
 > non actionnables : page et timestamps affichés mais aucune consultation possible de la source),
 > et insertion du **Lot 5 — Consultation des sources depuis les citations** (points 36 à 39).
+> **Révision : 2026-08-10** — **R-20 livré** (condensation de question multi-tour) : nouvelle étape
+> `QueryCondensationService`, insérée après `ResolveSessionAsync` et avant la résolution de stratégie
+> dans `RunRagPipelineAsync`/`AskStreamAsync`. Corrige l'effet de bord de R-2 identifié le 09/08 —
+> la récupération embeddait la question brute au lieu de la question condensée par l'historique.
 
 ---
 
@@ -51,7 +55,14 @@ Le fil rouge : **la chaîne « page → section → citation » est rompue** et 
 et peu fiable** parce que les métadonnées de structure ne sont jamais propagées et que les étapes
 LLM coûteuses sont activées par défaut sans batching.
 
-### Avancement (révision 2026-07-03)
+### Avancement (révision 2026-08-10)
+
+> **Périmètre de ce document** : la qualité du RAG (ingestion, récupération, restitution, citations).
+> Ce qui relève du socle — sécurité, exploitation, tests, dette de code — vit désormais dans
+> [DETTE-TECHNIQUE.md](DETTE-TECHNIQUE.md).
+>
+> ⚠️ Ce tableau est tenu à la main : **le code va parfois plus vite que lui**. En cas de doute,
+> vérifier le code.
 
 | Lot | Statut | Preuve |
 |-----|--------|--------|
@@ -61,7 +72,9 @@ LLM coûteuses sont activées par défaut sans batching.
 | **Lot 2** — multi-format complet | ✅ **Livré** — I-2 (DOCX/XLSX/CSV/PPTX/TXT/MD/JSON) + I-6 (détection de langue + `content_tsv` par langue). I-4 (OCR) hors périmètre | commits `5f761f1`..`e5a2142` (05/07), plan `docs/superpowers/plans/2026-07-03-lot2-multi-format-langue.md` |
 | **Lot 2-bis** — qualité de la restitution vidéo | ✅ **Livré** — I-21, I-22, I-10, Whisper `medium` (voir révision 08/07 bis) | commit `d170cc4` |
 | **Lot 2-ter** — UX d'upload & ingestion asynchrone | ✅ **Code livré** (08/07) — I-16/I-23, outbox + worker + SignalR ; vérification manuelle restante | — |
-| **Lots 3, 4** | ⏳ Non commencés | — |
+| **Lot 3** — R-2 historique de conversation | ✅ **Livré** — `SessionId` de bout en bout, persistance messages + citations, sidebar, reprise par URL, suppression de conversations | commits `a854e1a`..`82c3669`, mergés par la PR #3 (`a35c9cd`) |
+| **Lot 3** — reliquat | ✅ **R-20 livré** (10/08) — reste R-11 budget tokens (spécifié, non implémenté), R-8 cache (non implémenté) | commit à venir |
+| **Lot 4** — industrialisation | ⏳ Non commencé — la partie hors RAG a migré vers [DETTE-TECHNIQUE.md](DETTE-TECHNIQUE.md) | — |
 | **Lot 5** — consultation des sources | ⏳ Non commencé (inséré 13/07) | — |
 
 > ⚠️ **Effet de bord du Lot 0, non anticipé** : la désactivation du reranker (R-5) a supprimé la
@@ -301,9 +314,47 @@ Notation : **Impact** (1-5) × **Effort** (S/M/L). On attaque d'abord *fort impa
 
 15. ~~**R-5/R-6 Rerank & compression batchés**~~ → **remonté au Lot 0-bis (point 26)** pour le rerank ; la compression batchée reste ici, conditionnée au dépassement du budget tokens (R-11). *Impact 5 / M.*
 16. ~~**R-9 Recherche hybride**~~ → **remontée au Lot 0-bis (point 27)**.
-17. **R-2 Historique de conversation réel** : introduire `SessionId` dans les DTO chat, persister messages User/Assistant, charger l'historique. *Impact 4 / M.*
-18. **R-11 Budget tokens** : tronquer/sélectionner le contexte selon la fenêtre du modèle (compter les tokens). *Impact 4 / M.*
-19. **R-4 Garde-fou contexte vide** + **R-8 cache** (mémoire ou Redis) des réponses. *Impact 3 / M.*
+17. ~~**R-2 Historique de conversation réel**~~ → ✅ **LIVRÉ** (13/07, mergé par la PR #3). `SessionId` de bout en bout, persistance des messages et citations à chaque tour, sidebar, reprise par URL, suppression unitaire et purge.
+
+17-bis. ✅ **R-20 Condensation de question multi-tour** *(livré 10/08)*. **Effet de bord direct et non anticipé de R-2**, corrigé avant tout autre point de ce lot.
+
+   **Constat.** `RagPipelineService` injecte bien l'historique dans le prompt du LLM, mais la
+   **récupération**, elle, embed la question **brute** (`query.Question`). Une question de suivi
+   elliptique — « et pour les week-ends ? » — produit donc un vecteur qui ne porte plus le sujet de
+   la conversation. Or `query.Question` alimente **six étages** en amont de la réponse : le routage
+   adaptatif, HyDE, le multi-query, la recherche lexicale, le reranking et la compression. Tous
+   travaillent sur une intention tronquée.
+
+   **Pourquoi c'est plus grave qu'il n'y paraît.** Le LLM, lui, comprend parfaitement la question
+   grâce à l'historique : il produit une réponse fluide et assurée… appuyée sur des extraits hors
+   sujet. La panne est donc **silencieuse** — seules les citations sont fausses, pas le style. Et
+   comme R-2 apprend justement à l'utilisateur à poser des questions elliptiques (avant, il
+   reformulait tout à chaque tour), le lot précédent a *créé* le problème qu'il faut maintenant
+   corriger.
+
+   **Correctif livré.** Nouveau service `IQueryCondensationService` / `QueryCondensationService`
+   (`AIExperience.Rag.Infrastructure/AI/Rag/`) : un appel LLM court (prompt `RagPrompts.Condensation`)
+   qui réécrit la question de suivi en question autonome à partir de l'historique. Inséré dans
+   `RunRagPipelineAsync`/`AskStreamAsync` via `CondenseQueryAsync`, juste après `ResolveSessionAsync`
+   et **avant** la résolution de stratégie, puis propagé via `query with { Question = … }` aux quatre
+   méthodes qui irriguent les six étages (routage, HyDE, multi-query, recherche lexicale, reranking,
+   compression). La question **originale** (`query.Question` non modifiée) reste celle utilisée par
+   `BuildChatHistoryAsync` pour le prompt final et par `PersistExchangeAsync` — un seul point
+   d'insertion répare les six étages sans jamais toucher à ce qui est affiché ou persisté.
+
+   **Garde-fous livrés.** Pas de condensation au premier tour ni si `IncludeHistory=false` ou
+   `SessionId` absent (`CondenseQueryAsync` court-circuite avant tout appel LLM) ; flag
+   `RagOptions.Condensation.Enabled` (par défaut `true`) pour désactiver la fonctionnalité en
+   configuration ; repli sur la question originale si l'appel échoue (`try/catch`, log `Warning`) ou
+   si la réponse est inexploitable (`CondensationResponseCleaner`, pur et testé isolément — vide, trop
+   longue, ou avec préambule de bruit type « Question reformulée : … »), même esprit que
+   `BatchedRerankResponseParser`. Tests : `QueryCondensationServiceTests`,
+   `CondensationResponseCleanerTests`, et 3 scénarios dans `RagPipelineServiceHistoryTests`
+   (condensation propagée à la récupération, premier tour ignoré, flag désactivé ignoré).
+   *Impact 5 / S-M.*
+
+18. **R-11 Budget tokens** : tronquer/sélectionner le contexte selon la fenêtre du modèle (compter les tokens). Conception détaillée dans `docs/superpowers/specs/2026-07-13-lot4-r11-budget-tokens-design.md` — **spécifié, non implémenté**. *Impact 4 / M.*
+19. **R-4 Garde-fou contexte vide** + **R-8 cache** (mémoire ou Redis) des réponses. ⚠️ **Attention** : `appsettings.json` déclare déjà `"Cache": { "Enabled": true }` alors qu'aucune implémentation n'existe — passer ce flag à `false` tant que R-8 n'est pas livré (voir D-1 dans [DETTE-TECHNIQUE.md](DETTE-TECHNIQUE.md)). *Impact 3 / M.*
 
 ### 🎖️ Lot 4 — Industrialisation (continu)
 
@@ -368,15 +419,33 @@ Semaine 3 : Lot 0-bis (pertinence récupération) ──────► ✅ LIVR
 Semaine 4 : Lot 2 (multi-format) ─────────────────────► ✅ LIVRÉ (05/07)
 Semaine 5 : Lot 2-bis (restitution vidéo) ────────────► ✅ LIVRÉ (08/07) — corrige la restitution vidéo
 Semaine 6 : Lot 2-ter (UX upload & ingestion async) ──► ✅ CODE LIVRÉ (08/07) — débloque l'utilisateur à l'import + notification de fin
-Ensuite   : Lot 3 (restitution restante — R-2, R-11, R-4/R-8)
+Semaine 7 : Lot 3 (R-2 historique de conversation) ───► ✅ LIVRÉ (13/07, PR #3)
+Ensuite   : R-20 (condensation multi-tour) ───────────► ✅ LIVRÉ (10/08) — corrige la régression induite par R-2
 Puis      : Lot 5 (consultation des sources — I-24, R-19) — gain produit le plus visible
-Continu   : Lot 4 (observabilité, évaluation, outbox multi-instance) + reliquat Lot 1
+Puis      : R-11 (budget tokens), R-8 (cache) — reliquat du Lot 3
+Continu   : Lot 4 (évaluation R-13, observabilité) + reliquat Lot 1
+En // :     socle hors RAG → DETTE-TECHNIQUE.md
 ```
 
-**Trois actions à plus fort ratio impact/effort à faire en premier (révision 06/07)** :
-1. **I-21** (timestamps hors du texte embeddé + ré-ingestion des vidéos) — restaure la similarité question/chunk sur les vidéos, comme R-15 l'avait fait pour les documents.
-2. **I-22** (unification des chemins d'ingestion vidéo) — supprime la dépendance de la qualité au point d'entrée d'upload.
-3. **I-10/point 31** (chunks temporels plus denses + overlap) — améliore le recall sur la parole, peu dense par nature.
+**Trois actions à plus fort ratio impact/effort identifiées le 09/08** :
+1. ✅ **R-20** (condensation de question multi-tour) — **livré le 10/08**. Réparait une régression
+   déjà en production fonctionnelle depuis la livraison de R-2, invisible sans inspection des citations.
+2. **R-13 / T-4** (harnais d'évaluation) — sans mesure objective, aucun des points restants ne peut
+   être arbitré autrement qu'au ressenti. Prérequis de fait à tout le reste de ce plan.
+3. **Lot 5** (consultation des sources) — le seul point de cette liste dont l'utilisateur perçoive
+   directement le bénéfice.
+
+### Pistes identifiées, non planifiées
+
+Notées ici pour ne pas être perdues ; aucune n'est arbitrée.
+
+- **Reranker cross-encoder local** (bge-reranker ONNX) en remplacement du reranker LLM derrière
+  `IRerankerService`. C'est le seul mécanisme capable de produire un score de pertinence
+  **sémantiquement interprétable** — donc la seule voie crédible vers un vrai garde-fou « aucun
+  document pertinent », que le score cosinus ne peut pas fournir sur ce corpus (cf. §4.5).
+- **Parent-document retrieval** : indexer de petits chunks pour la précision de la recherche, mais
+  transmettre au LLM une fenêtre élargie reconstruite via `ChunkIndex`. Améliore le rappel sans
+  dégrader la discrimination.
 
 ---
 

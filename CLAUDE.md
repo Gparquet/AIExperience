@@ -1,6 +1,10 @@
 # CLAUDE.md — AIExperience
 
-Contexte essentiel pour les assistants IA travaillant sur ce projet.
+Contexte essentiel pour les assistants IA travaillant sur ce dépôt.
+
+> Ce fichier est volontairement court : il décrit **l'organisation du dépôt** et les **règles
+> transverses**. Les détails techniques vivent dans les CLAUDE.md de chaque périmètre
+> (voir « Où trouver la vraie documentation »).
 
 ---
 
@@ -13,67 +17,92 @@ Tu es un **leader technique senior** spécialisé en **.NET / React / Intelligen
 1. **Langue** : toutes les réponses sont rédigées **en français**, sans exception (commentaires de code inclus).
 2. **Mode de réponse** : toujours structurer la réponse sous forme de **plan** (étapes numérotées, sections claires) avant d'écrire du code ou d'expliquer une solution.
 3. **Commentaires dans le code** : **tout le code produit doit être commenté** — chaque classe, méthode, bloc logique non trivial reçoit un commentaire XML (`///` en C#) ou JSDoc/inline (`//`) en TypeScript/React.
-4. **Posture** : adopter le point de vue d'un tech lead — proposer des solutions robustes, scalables, respectueuses de la Clean Architecture et des conventions du projet, et signaler les risques ou dettes techniques identifiés.
+4. **Ton des commentaires** : expliquer **le pourquoi** en langage naturel. Ne jamais référencer dans le code les identifiants du plan d'amélioration (`I-12`, `R-15`, « Lot 2-ter »…) — ils n'ont de sens que dans les documents de suivi, pas pour quelqu'un qui lit le fichier six mois plus tard.
+5. **Posture** : adopter le point de vue d'un tech lead — proposer des solutions robustes, scalables, respectueuses de la Clean Architecture et des conventions du projet, et signaler les risques ou dettes techniques identifiés.
+6. **Commits** : Geoffrey commite lui-même. Ne pas commiter sans demande explicite ; laisser le travail en *staging*.
 
 ---
 
-## Vue d'ensemble
+## Organisation du dépôt
 
-**Système RAG (Retrieval-Augmented Generation)** en C# .NET 10 avec interface graphique React.
-Pipeline complet : ingestion de documents → chunking → embeddings → recherche vectorielle → réponse LLM avec citations.
+Le projet est organisé en **Steps** — des étapes d'apprentissage progressif, chacune reprenant et
+enrichissant la précédente.
 
-**Structure du dépôt :**
 ```
 AIExperience/
-└── Step 1/          ← Code source de l'étape 1 (étape actuelle)
-    ├── ARCHITECTURE.md
-    ├── docker-compose.yml
-    ├── scripts/init.sql
-    └── src/
-        ├── Back/                          ← Projets C# / .NET
-        │   ├── AIExperience.slnx
-        │   ├── AIExperience.Rag.Domain/
-        │   ├── AIExperience.Rag.Application/
-        │   ├── AIExperience.Rag.Infrastructure/
-        │   ├── AIExperience.App.Console/
-        │   └── AIExperience.Web.Api/      ← API REST ASP.NET Core
-        └── Front/                         ← Application React + TypeScript (Vite)
-            ├── src/api/client.ts
-            ├── src/pages/
-            └── src/types/index.ts
+├── Step 1/          ← Archive : RAG de base (PDF, pipeline Direct, chat + citations)
+├── Step 2/          ← Archive : stratégies avancées (HyDE, RAG-Fusion, reranking)
+├── Step3/           ← ⭐ ÉTAPE COURANTE — tout le développement se fait ici
+├── Presentation/    ← Support de présentation du projet
+└── docs/superpowers/ ← Specs de conception et plans d'implémentation datés
 ```
 
-Le projet est organisé en **Steps** (étapes d'apprentissage/développement progressif). Le dossier `Step 1/` contient l'implémentation courante.
+**Sauf mention contraire explicite, toute demande porte sur `Step3/`.** Les dossiers `Step 1/` et
+`Step 2/` sont conservés à titre d'archive et ne doivent pas être modifiés.
+
+---
+
+## Où trouver la vraie documentation
+
+| Besoin | Fichier |
+|--------|---------|
+| **Travailler sur le back-end .NET** | [Step3/src/Back/CLAUDE.md](Step3/src/Back/CLAUDE.md) |
+| **Travailler sur le front React** | [Step3/src/Front/CLAUDE.md](Step3/src/Front/CLAUDE.md) |
+| **Comprendre une décision d'architecture** | [Step3/docs/adr/](Step3/docs/adr/) — 12 ADR numérotées |
+| **Connaître le reste à faire sur le RAG** | [Step3/PLAN-AMELIORATION-RAG.md](Step3/PLAN-AMELIORATION-RAG.md) |
+| **Connaître le reste à faire hors RAG** (sécurité, exploitation, tests) | [Step3/DETTE-TECHNIQUE.md](Step3/DETTE-TECHNIQUE.md) |
+| **Conception d'une feature passée** | `docs/superpowers/specs/` puis `docs/superpowers/plans/` |
+
+> ⚠️ Le plan d'amélioration RAG est un document de suivi tenu à la main : **le code va parfois plus
+> vite que lui**. En cas de doute sur ce qui est livré, vérifier le code, pas le plan.
+
+---
+
+## Step 3 — vue d'ensemble
+
+Système RAG complet en **.NET 10** + interface **React 19**, avec pipeline de transcription
+vidéo/audio 100 % local.
+
+```
+Ingestion (asynchrone)          Restitution
+─────────────────────           ────────────
+upload → 202 Accepted           question
+   ↓ outbox_messages               ↓
+IngestionWorker                 récupération hybride (vecteur + lexical, RRF)
+   ↓                               ↓
+extraction (9 formats)          reranking LLM batché
+vidéo : FFmpeg → Whisper           ↓
+   ↓                            réponse LLM + citations
+chunking → embeddings              ↓
+   ↓                            persistance de la conversation
+pgvector + tsvector
+   ↓
+notification SignalR
+```
+
+**Trois modes de restitution** exposés au front : recherche full-text seule, LLM seul, RAG complet.
 
 ---
 
 ## Commandes essentielles
 
 ```powershell
-# Démarrer la base de données PostgreSQL
-cd "Step 1"
+# Base de données PostgreSQL 17 + pgvector (port 5433)
+cd Step3
 docker-compose up -d
 
-# Compiler la solution .NET
-dotnet build "Step 1/src/Back/AIExperience.slnx"
+# Back-end
+dotnet build Step3/src/Back/AIExperience.slnx
+dotnet test  Step3/src/Back/AIExperience.slnx
+dotnet run --project Step3/src/Back/AIExperience.Web.Api
+# → http://localhost:5406        (API REST)
+# → http://localhost:5406/scalar/v1  (documentation interactive)
 
-# Lancer l'API Web (back-end)
-dotnet run --project "Step 1/src/Back/AIExperience.Web.Api"
-# → http://localhost:50406  (API REST — HTTP)
-# → https://localhost:50405 (API REST — HTTPS)
-# → http://localhost:50406/scalar/v1  (documentation interactive)
-
-# Lancer l'application console (alternative sans front)
-dotnet run --project "Step 1/src/Back/AIExperience.App.Console"
-
-# Lancer le front-end React
-cd "Step 1/src/Front"
+# Front-end
+cd Step3/src/Front
 npm install
-npm run dev
-# → http://localhost:5173
-
-# Appliquer les migrations EF Core (si ajoutées)
-dotnet ef database update --project "Step 1/src/Back/AIExperience.Rag.Infrastructure" --startup-project "Step 1/src/Back/AIExperience.Web.Api"
+npm run dev        # → http://localhost:5173 (proxy /api et /hubs vers le back)
+npm run build      # tsc -b + vite build
 ```
 
 ---
@@ -96,177 +125,57 @@ Domain  ←  Application  ←  Infrastructure  ←  Web.Api / Console
 
 ---
 
-## Stack technique
-
-### Back-end (.NET)
-
-| Technologie | Usage |
-|------------|-------|
-| .NET 10.0 | Framework cible de tous les projets |
-| ASP.NET Core 10 | API REST (`AIExperience.Web.Api`) |
-| Microsoft.AspNetCore.OpenApi + Scalar | Documentation API interactive |
-| Entity Framework Core 10 + Npgsql 10 | ORM PostgreSQL |
-| pgvector 0.3.0 | Recherche vectorielle cosinus dans PostgreSQL |
-| MediatR 14.1.0 | CQRS (commandes uniquement, pas les requêtes) |
-| FluentValidation 12.1.1 | Validation des commandes |
-| Microsoft.Extensions.AI 10.5.0 | Abstraction `IChatClient` indépendante du provider |
-| Microsoft.SemanticKernel 1.74.0 | Templates de prompts, appels structurés LLM |
-| OllamaSharp 5.4.25 | Support modèles locaux Ollama |
-| PdfPig 0.1.15 | Extraction texte PDF |
-
-### Front-end (React)
-
-| Technologie | Usage |
-|------------|-------|
-| React 19 + TypeScript | Framework UI |
-| Vite | Build tool + dev server (port 5173) |
-| React Router v7 | Navigation entre pages |
-| Fetch API (natif) | Appels HTTP vers l'API REST |
-
----
-
-## Patterns de codage — CONVENTIONS IMPORTANTES
+## Conventions transverses
 
 ### Entités
-- Setters **privés** obligatoires
-- Création via **méthode factory statique** : `Entity.Create(...)`
-- Jamais de constructeur public avec paramètres
+Setters **privés**, création via **méthode factory statique** `Entity.Create(...)`. Jamais de
+constructeur public avec paramètres, jamais d'initialiseur d'objet.
 
 ```csharp
-// Correct
-var doc = Document.Create(fileName, contentType, fileSize, userId, metadata);
-
-// Interdit
-var doc = new Document { FileName = "...", ... };
+var doc = Document.Create(fileName, contentType, fileSize, userId, metadata);  // ✅
+var doc = new Document { FileName = "..." };                                    // ❌
 ```
 
-### CQRS avec MediatR
-- **Commandes** (écriture) → MediatR : `IRequest<T>` + handler + validator
-- **Requêtes** (lecture) → appel de service direct (pas de MediatR pour les lectures)
-- **Réponse d'un contrôleur après une commande d'écriture** : ne jamais rappeler le repository pour
-  relire l'entité qui vient d'être écrite. Le `Response` du handler doit déjà porter tout ce qui est
-  nécessaire à la réponse HTTP (Id, Status, FileName, CreatedAt...) ; les champs restants doivent
-  être ceux déjà connus du contrôleur avant l'envoi de la commande, jamais une relecture DB. Un
-  repository injecté dans un contrôleur ne doit servir qu'aux véritables lectures (`GetById`,
-  `GetAll`...), jamais à reconstruire la réponse d'un endpoint d'écriture.
+### CQRS
+- **Écritures** → commande + handler via le **dispatcher CQRS maison** (`ICommandDispatcher`).
+  MediatR et FluentValidation ont été retirés du projet — voir [ADR 012](Step3/docs/adr/012-cqrs-maison-composition.md).
+- **Lectures** → appel direct du repository ou du service, sans passer par une commande.
+- **Après une écriture**, ne jamais relire l'entité depuis le repository pour construire la réponse
+  HTTP : le `Response` du handler doit déjà porter tout le nécessaire, complété au besoin par ce que
+  le contrôleur connaissait déjà avant l'envoi. Un repository injecté dans un contrôleur ne sert
+  qu'aux vraies lectures.
 
 ### Options Pattern
-- Toute configuration = classe `*Options` liée à une section `appsettings.json`
-- Binding via `services.Configure<TOptions>(config.GetSection("..."))`
+Toute configuration = une classe `*Options` liée à une section de `appsettings.json`, injectée via
+`IOptions<T>`.
 
 ### Injection de dépendances
-- Registration dans les méthodes d'extension : `AddInfrastructure()` et `AddApplication()`
-- Jamais de `new` pour les services dans le code métier
-
-### API REST
-- Controllers dans `AIExperience.Web.Api/Controllers/`
-- DTOs dans `AIExperience.Web.Api/DTOs/` (records C#)
-- Pas de logique métier dans les controllers — déléguer aux services du Domain/Application
-
----
-
-## Pipeline RAG — 7 étapes
-
-```
-1. Résolution de stratégie  (Direct | HyDE | Fusion | Adaptive)
-2. Récupération des chunks  (embed question → recherche cosinus pgvector)
-3. Compression du contexte  (optionnel — LLM extrait les phrases pertinentes)
-4. Construction du prompt   (historique + contexte + question)
-5. Complétion LLM           (IChatClient.GetResponseAsync)
-6. Génération des citations (chunk → Citation.Create)
-7. Retourne RagResponse     (Answer, Citations, StrategyUsed, TotalTokens, DurationMs)
-```
-
-**Seule la stratégie `Direct` est complètement implémentée.**
-HyDE et Fusion ont des TODO dans `RagPipelineService.RetrieveChunksAsync`.
-
----
-
-## Pipeline d'ingestion
-
-```
-UploadDocumentCommand (MediatR)
-    → UploadDocumentHandler    : crée l'entité Document, persiste
-    → IngestionService         : extraction → chunking → embedding → stockage
-        → ICompositeTextExtractor  (PDF: PdfPig | HTML: TODO)
-        → ITextNomalize            (RecursiveChunker: 800 chars, 100 overlap)
-        → IEmbeddingService        (OpenAI/Azure batch embedding)
-        → IVectorStoreService      (INSERT pgvector via SQL brut)
-```
-
----
-
-## Configuration (appsettings.json)
-
-```json
-{
-  "ConnectionStrings": {
-    "Postgres": "Host=localhost;Port=5432;Database=ragdocumentchat;Username=postgres;Password=postgres"
-  },
-  "AI": {
-    "Provider": "OpenAI",
-    "Endpoint": "http://localhost:1234/v1",
-    "ChatModel": "llama-3.2-1b-instruct",
-    "EmbeddingModel": "text-embedding-nomic-embed-text-v1.5",
-    "ApiKey": "sk-lm-..."
-  },
-  "RagOptions": {
-    "DefaultStrategy": "Adaptive",
-    "Retrieval": { "TopK": 10, "ScoreThreshold": 0.3 }
-  },
-  "Cors": {
-    "AllowedOrigins": [ "http://localhost:5173" ]
-  }
-}
-```
-
-Providers supportés : `AzureOpenAI` | `OpenAI` | `Ollama` | `GitHubModels`
+Enregistrement centralisé dans `AddInfrastructure()` et `AddApplication()`. Jamais de `new` pour un
+service dans du code métier.
 
 ---
 
 ## Base de données
 
-- PostgreSQL 17 + extension `pgvector`
-- Démarrage via `docker-compose up -d` dans `Step 1/`
-- Script d'init : `Step 1/scripts/init.sql`
-- Tables : `documents`, `document_chunks` (vecteur 768 dims), `conversation_sessions`, `chat_messages`, `citations`, `outbox_messages`
-- Index HNSW sur `document_chunks.embedding` (cosinus)
-- **Pas de migrations EF Core** — le schéma est géré par `init.sql`
+- **PostgreSQL 17 + pgvector**, port **5433**, démarré par `docker-compose up -d` depuis `Step3/`.
+- Tables : `documents`, `document_chunks` (vecteur 768 dims), `conversation_sessions`,
+  `chat_messages`, `citations`, `outbox_messages`.
+- Index **HNSW** (cosinus) sur les embeddings, index **GIN** sur `content_tsv` (recherche lexicale).
+- **Pas de migrations EF Core** : le schéma est géré par `Step3/scripts/init.sql`, complété par des
+  scripts `migrate-*.sql` appliqués **manuellement**. Toute évolution de schéma implique donc de
+  mettre à jour `init.sql` *et* de fournir un script de migration.
 
 ---
 
-## TODOs connus (ne pas réimplémenter sans vérifier)
+## Points d'attention connus
 
-| Fonctionnalité | Localisation | Statut |
-|---------------|-------------|--------|
-| Stratégie HyDE | `RagPipelineService.RetrieveChunksAsync` | TODO commenté |
-| Stratégie Fusion (RRF) | `RagPipelineService.RetrieveChunksAsync` | TODO commenté |
-| Extracteur HTML | `HtmlTextExtractor` | Placeholder vide |
-| Extracteur DOCX/XLSX/TXT | Non créé | Non commencé |
-| Reranking cross-encoder | `RagPipelineService` | Config existe, code absent |
-| Cache Redis | `RagOptions.Cache` | Config existe, code absent |
-| Background processing | `Program.cs` | Status forcé Completed manuellement |
-| Outbox pattern | Table SQL créée | Non intégré en app |
-| Dockerfiles | `docker/` | Commentés dans docker-compose, non créés |
-| Authentification utilisateur | API + Front | UserId hardcodé en dev |
+> Résumé. La liste de référence complète est dans [Step3/DETTE-TECHNIQUE.md](Step3/DETTE-TECHNIQUE.md).
 
----
-
-## Fichiers clés à connaître
-
-| Fichier | Rôle |
-|---------|------|
-| `Step 1/src/Back/AIExperience.Web.Api/Program.cs` | Racine DI de l'API Web + CORS + OpenAPI |
-| `Step 1/src/Back/AIExperience.Web.Api/appsettings.json` | Configuration runtime de l'API |
-| `Step 1/src/Back/AIExperience.Web.Api/Controllers/DocumentsController.cs` | Endpoints documents |
-| `Step 1/src/Back/AIExperience.Web.Api/Controllers/ChatController.cs` | Endpoint question RAG |
-| `Step 1/src/Back/AIExperience.App.Console/Program.cs` | Racine DI + menu interactif (console) |
-| `Step 1/src/Back/AIExperience.Rag.Infrastructure/DependencyInjection.cs` | Registration de tous les services Infrastructure |
-| `Step 1/src/Back/AIExperience.Rag.Application/DependencyInjection.cs` | Registration de tous les services Application |
-| `Step 1/src/Back/AIExperience.Rag.Infrastructure/AI/Rag/RagPipelineService.cs` | Cœur du pipeline RAG |
-| `Step 1/src/Back/AIExperience.Rag.Infrastructure/Persistence/AppDbContext.cs` | DbContext EF Core |
-| `Step 1/src/Front/src/api/client.ts` | Client HTTP du front-end |
-| `Step 1/src/Front/src/pages/DocumentsPage.tsx` | Page gestion des documents |
-| `Step 1/src/Front/src/pages/ChatPage.tsx` | Page interface chat RAG |
-| `Step 1/scripts/init.sql` | Schéma PostgreSQL complet |
-| `Step 1/ARCHITECTURE.md` | Documentation architecture détaillée (FR) |
+- **Pas d'authentification** : l'`UserId` provient de la section `DevAuth` de la configuration.
+  L'isolation par utilisateur est de plus **absente de la chaîne de lecture** (les requêtes pgvector
+  et full-text ne filtrent pas sur `user_id`).
+- **Secrets versionnés** : `appsettings.json` contient une clé d'API en clair et des chemins absolus
+  propres à la machine de développement (Whisper, FFmpeg).
+- **Pas de CI** : `.github/workflows/` existe mais est vide.
+- **Pas de health check ni de validation des options au démarrage** : une configuration invalide ne
+  se manifeste qu'au premier appel concerné.

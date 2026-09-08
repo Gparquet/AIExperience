@@ -93,6 +93,25 @@ public static class RagPrompts
         """;
 
     /// <summary>
+    /// Prompt pour la condensation de question multi-tour. Réécrit une question de suivi
+    /// elliptique en question autonome à partir de l'historique, pour que la récupération documentaire
+    /// (embedding, HyDE, multi-query, recherche lexicale) porte sur l'intention complète plutôt que sur
+    /// une question tronquée que seul le LLM final — via l'historique de son propre prompt — sait interpréter.
+    /// </summary>
+    public const string Condensation = """
+        Voici l'historique d'une conversation et la question de suivi posée par l'utilisateur.
+        Réécris cette question de suivi en une question autonome, compréhensible sans le reste de la
+        conversation, en t'appuyant sur l'historique pour résoudre les ellipses et les références implicites.
+        Ne réponds pas à la question. Ne change pas son intention. Si elle est déjà autonome, recopie-la telle quelle.
+        Réponds UNIQUEMENT avec la question reformulée, sans introduction, ni explication, ni guillemets.
+
+        Historique :
+        {history}
+
+        Question de suivi : {question}
+        """;
+
+    /// <summary>
     /// Prompt système pour le mode LLM direct (sans contexte RAG).
     /// Le LLM répond uniquement depuis ses connaissances générales.
     /// Générique et neutre — aucun domaine spécialisé codé en dur.

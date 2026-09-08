@@ -252,6 +252,7 @@ public static class DependencyInjection
         services.AddScoped<IHydeService, HydeService>();
         services.AddScoped<IMultiQueryService, MultiQueryService>();
         services.AddScoped<IRerankerService, LlmRerankerService>();
+        services.AddScoped<IQueryCondensationService, QueryCondensationService>();
 
         services.AddScoped<IRagPipelineService, RagPipelineService>();
 

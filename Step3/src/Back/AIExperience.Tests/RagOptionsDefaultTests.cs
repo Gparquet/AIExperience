@@ -28,7 +28,7 @@ public sealed class RagOptionsDefaultTests
     {
         // Valeur de repli si le reranker est activé explicitement
         _sut.Reranker.TopKAfterRerank.Should().BeGreaterThan(0)
-            .And.BeLessOrEqualTo(20);
+            .And.BeLessThanOrEqualTo(20);
     }
 
     // ── R-6 : Compression contextuelle ────────────────────────────────────────

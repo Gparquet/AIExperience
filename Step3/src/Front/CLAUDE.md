@@ -1,499 +1,230 @@
-# CLAUDE.md — AIExperience Step 3 (Front-end React/TypeScript)
+# CLAUDE.md — Step 3, front-end React / TypeScript
 
-Contexte essentiel pour les assistants IA travaillant sur le front-end de Step 3.
-
----
-
-## Rôle et comportement de l'assistant
-
-Tu es un **leader technique senior** spécialisé en **React / TypeScript / UX**.
-
-### Règles impératives — à respecter sans exception
-
-1. **Langue** : toutes les réponses et tous les commentaires de code sont rédigés **en français**, sans exception.
-2. **Mode de réponse** : structurer la réponse sous forme de **plan** (étapes numérotées, sections claires) avant d'expliquer ou de coder.
-3. **Commentaires dans le code** : **tout le code produit doit être commenté** — chaque composant, fonction, bloc logique non trivial reçoit un commentaire JSDoc/inline (`//` ou `/* */`).
-4. **Posture** : adopter le point de vue d'un tech lead — proposer des solutions robustes, scalables, et signaler les risques ou améliorations identifiés.
+Contexte essentiel pour les assistants IA travaillant sur le front-end.
+Les règles de comportement et les conventions transverses sont définies dans le
+[CLAUDE.md racine](../../../CLAUDE.md) — ce fichier ne couvre que le front.
 
 ---
 
-## Vue d'ensemble — Step 3
+## Vue d'ensemble
 
-**Application React 19 + TypeScript / Vite pour le RAG avec support vidéo.**
+Application **React 19 + TypeScript**, servie par **Vite**, sans bibliothèque d'état ni de style
+externe. Trois notions structurent l'interface :
 
-Step 3 conserve l'interface des steps précédentes (pages Documents, Chat) et **ajoute une nouvelle page Vidéo** permettant de transcriber des fichiers audio/vidéo localement (via l'API back-end Whisper/FFmpeg) et de les ingérer dans le RAG.
-
-- **3 pages principales** : Documents, Vidéo (NOUVELLE), Chat (enrichie)
-- **Chat avec 3 modes de démonstration** : Full-text (recherche PostgreSQL), LLM direct (sans RAG), RAG complet (avec citations enrichies)
-- **Timestamps vidéo propagés** dans les citations (affichage de la position temporelle dans la source vidéo)
+1. **L'ingestion est asynchrone.** Un upload renvoie immédiatement `202 Accepted` : le formulaire se
+   débloque tout de suite, et l'avancement réel arrive ensuite par **SignalR**.
+2. **Le chat a trois modes de démonstration** — recherche classique, LLM seul, RAG complet — pour
+   comparer les approches côte à côte.
+3. **Les conversations sont persistées** et pilotées par l'URL (`/chat/:sessionId`).
 
 ---
 
-## Commandes essentielles
+## Commandes
 
 ```bash
-# Dans Step 3/src/Front
-npm install                    # Installer les dépendances
-npm run dev                    # Démarrer dev server (http://localhost:5173)
-npm run build                  # Build production
-npm run preview               # Preview du build production
-npm run lint                   # Linter (si configuré)
+# Depuis Step3/src/Front
+npm install
+npm run dev       # http://localhost:5173
+npm run build     # tsc -b && vite build
+npm run lint      # ESLint
 ```
+
+**Le back-end doit tourner sur `http://localhost:5406`.** Vite proxifie `/api` **et** `/hubs` vers
+lui (`vite.config.ts`) — le proxy `/hubs` a `ws: true`, indispensable à la négociation WebSocket de
+SignalR. Sans lui, la connexion part vers le serveur Vite et échoue silencieusement.
 
 ---
 
-## Structure des fichiers
+## Structure
 
 ```
 src/
-├── App.tsx                    ← Composant racine + Router
+├── App.tsx                              ← Router + topbar de navigation
+├── main.tsx                             ← Point d'entrée, monte le provider de notifications
+├── index.css                            ← Tous les styles (CSS natif, un seul fichier global)
+├── api/client.ts                        ← Client HTTP typé — SEUL point d'accès au back-end
+├── types/index.ts                       ← Types partagés, miroir manuel des DTO C#
 ├── pages/
-│   ├── DocumentsPage.tsx      ← Upload PDF/vidéo, gestion des documents
-│   ├── VideoPage.tsx          ← NOUVELLE — Transcription vidéo/audio
-│   └── ChatPage.tsx           ← Enrichi — 3 modes (full-text / LLM / RAG)
-├── api/
-│   └── client.ts              ← Client HTTP typé (namespaces: documents, video, chat)
-├── types/
-│   └── index.ts               ← Types TypeScript partagés
-└── index.css / main.tsx       ← Styles globaux + entrée
+│   ├── DocumentsPage.tsx                ← Upload + liste des documents
+│   ├── DocumentDetailPage.tsx           ← Suivi fin de l'ingestion d'un document
+│   ├── VideoPage.tsx                    ← Upload vidéo/audio + transcription
+│   └── ChatPage.tsx                     ← Chat RAG, 3 modes, citations
+├── components/
+│   ├── ChatSidebar.tsx                  ← Liste des conversations + suppression
+│   └── IngestionStepper.tsx             ← Frise des étapes d'ingestion
+├── context/IngestionNotificationsContext.tsx  ← Notifications d'ingestion transverses
+└── realtime/ingestionHub.ts             ← Connexion SignalR
 ```
 
 ---
 
-## Routes (Router)
+## Routes
 
-| Route | Page | Description |
-|-------|------|-------------|
-| `/` | `DocumentsPage` | Upload de fichiers (PDF, vidéo, audio), liste des documents |
-| `/video` | `VideoPage` | **NOUVEAU** — Transcription vidéo/audio avec options |
-| `/chat` | `ChatPage` | Interface chat RAG avec 3 modes de démonstration |
-
-**Navigation :** Topbar avec 3 onglets (Documents, Vidéo, Chat)
-
----
-
-## VideoPage.tsx — Nouvelle page Step 3
-
-### Fonctionnalités principales
-
-**Upload de fichier :**
-- Accepte vidéo/audio (formats : `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.wav`, `.mp3`, `.m4a`)
-- Validation du fichier côté client
-
-**Options de transcription :**
-- **Langue** (dropdown, défaut "fr") — code ISO 639-1
-- **Nettoyage LLM** (checkbox, défaut désactivé) — supprime balises timing, envoie texte au LLM
-- **Auto-ingest RAG** (checkbox, défaut activé) — ingère automatiquement le document après transcription
-- **Titre** (input optionnel) — titre du document source
-
-**Affichage du résultat :**
-- Statistiques : durée vidéo, nombre de segments Whisper, temps de traitement
-- **Transcription nettoyée** (affichée en priorité si présente)
-- **Transcription brute** (repliable/dépliable, affiche timestamps `[HH:MM:SS]`)
-- Bouton **"Interroger ce document dans le Chat →"** — navigue vers `/chat` en passant le `documentId` en state
-
-### Appel API
-
-```typescript
-api.video.transcribe(file, {
-  language: "fr",
-  cleanWithLlm: false,
-  autoIngest: true,
-  title: "Mon vidéo"
-})
-
-// → POST /api/video/transcribe (multipart/form-data)
-// → TranscribeVideoResponse
-```
-
-### Types TypeScript
-
-```typescript
-interface TranscribeVideoResponse {
-  rawTranscription: string;             // Transcription brute avec timestamps
-  cleanedTranscription?: string;        // Transcription nettoyée (optionnelle)
-  duration: number;                     // Durée en secondes
-  segmentCount: number;                 // Nombre de segments Whisper
-  documentId?: string;                  // ID du document créé (si autoIngest=true)
-  processingTimeMs: number;             // Temps de traitement en ms
-}
-
-interface VideoTranscribeOptions {
-  language?: string;        // Code langue ISO (défaut "fr")
-  cleanWithLlm?: boolean;   // Nettoyage LLM (défaut false)
-  autoIngest?: boolean;     // Auto-ingest RAG (défaut true)
-  title?: string;           // Titre du document
-}
-```
+| Route | Page | Rôle |
+|-------|------|------|
+| `/` | `DocumentsPage` | Upload et liste des documents |
+| `/documents/:id` | `DocumentDetailPage` | Suivi étape par étape de l'ingestion |
+| `/video` | `VideoPage` | Upload vidéo/audio, consultation de la transcription |
+| `/chat` | `ChatPage` | Nouvelle conversation |
+| `/chat/:sessionId` | `ChatPage` | Reprise d'une conversation existante |
 
 ---
 
-## ChatPage.tsx — Enrichi en Step 3
+## Notifications d'ingestion — `IngestionNotificationsContext`
 
-### 3 modes de démonstration
+C'est la pièce la moins évidente du front. Le provider est monté dans `App.tsx`, **autour du bloc
+`<Routes>`**, ce qui lui permet de survivre aux changements de page : un utilisateur qui lance un
+import puis navigue vers le chat reçoit quand même le toast de fin.
 
-La page affiche 3 onglets permettant de comparer les approches :
+Il expose trois choses :
 
-| Mode | Paramètres API | Comportement | Badge | Cas d'usage |
-|------|---|---|---|---|
-| **Classique** | `UseLlm=false`, `UseRag=true` | Recherche PostgreSQL `plainto_tsquery` sans embeddings ni LLM. Retourne chunks bruts. | "🔍 Recherche" | Démonstration full-text, requêtes factuelles, faible latence |
-| **LLM** | `UseLlm=true`, `UseRag=false` | Question directement au LLM, sans récupération documentaire. Répond sur la base du modèle seul. | "🤖 Sans documents" | Démonstration capacités LLM, questions générales |
-| **RAG** | `UseLlm=true`, `UseRag=true` | Pipeline RAG complet : embed question → cosinus pgvector → LLM. Retourne réponse + citations enrichies. | "📄 Avec documents" | Production, questions spécialisées, réponses avec sources |
+| API | Usage |
+|-----|-------|
+| `registerPendingDocument(id, fileName)` | Déclaré à l'upload, pour nommer le document dans le toast de fin |
+| `subscribe(listener)` | Changements de **statut** (`documentStatusChanged`) — utilisé par les listes |
+| `subscribeProgress(documentId, listener)` | Changements de **progression** (`documentProgressChanged`), **filtrés par document** |
 
-### Fonctionnalités enrichies Step 3
+**Pourquoi deux canaux séparés** : la progression émet à haute fréquence (pourcentages, compteurs de
+chunks). La filtrer par `documentId` évite d'imposer ces rafales à la liste des documents, qui n'a
+besoin que du statut.
 
-**Panneau prompt système :**
-- Par mode (3 prompts séparés chargés depuis `GET /api/chat/system-prompts`)
-- Éditeur de texte libre (modification utilisateur)
-- Bouton "Reset" pour restaurer le prompt par défaut
-
-**Sélecteur de document :**
-- Dropdown listant tous les documents disponibles
-- Option "Tous les documents" (défaut)
-- Filtre la recherche/RAG sur un document spécifique si sélectionné
-
-**Rendu des réponses :**
-- Mode **Classique** : liste de résultats de recherche (chunks bruts)
-- Modes **LLM** et **RAG** : bulle de chat avec réponse du LLM
-
-**Citations enrichies :**
-- Contenu du chunk
-- Nom du document source
-- Score de pertinence (cosinus pour RAG)
-- Section/titre (si disponible)
-- **Index du chunk** dans le document
-- **Timestamps vidéo** (si document source est une vidéo) :
-  - `startTimeSeconds` et `endTimeSeconds`
-  - Affichage formaté `[HH:MM:SS]` (peut être lié à un lecteur vidéo dans les améliorations futures)
-
-### Types TypeScript — Enrichis
-
-```typescript
-interface CitationResponse {
-  content: string;              // Contenu du chunk cité
-  documentName: string;         // Nom du document source
-  score: number;                // Score de pertinence (cosinus)
-  sectionTitle?: string;        // NOUVEAU — Titre de la section (ex: "Introduction")
-  chunkIndex?: number;          // NOUVEAU — Index du chunk dans le document
-  startTimeSeconds?: number;    // NOUVEAU — Début du segment vidéo en secondes
-  endTimeSeconds?: number;      // NOUVEAU — Fin du segment vidéo en secondes
-}
-
-interface AskQuestionRequest {
-  question: string;
-  documentIds?: string[];       // IDs des documents à interroger
-  strategy?: string;            // Stratégie RAG (Direct, HyDE, Fusion, Adaptive)
-  useLlm?: boolean;             // NOUVEAU — Utiliser LLM (false = mode full-text)
-  useRag?: boolean;             // NOUVEAU — Utiliser RAG (false = LLM direct)
-  systemPrompt?: string;        // NOUVEAU — Prompt système personnalisé
-}
-
-interface SystemPromptsResponse {
-  ragSystem: string;            // Prompt RAG par défaut
-  directLlmSystem: string;      // Prompt LLM direct par défaut
-}
-```
+**Repli automatique** : si SignalR est indisponible, le contexte bascule sur un *polling* toutes les
+4 secondes. Une modification de ce fichier doit préserver les deux chemins.
 
 ---
 
-## client.ts — API Client HTTP
+## `api/client.ts` — le seul point d'accès au back-end
 
-### Namespaces disponibles
+Aucun composant ne doit appeler `fetch` directement. Le client expose trois espaces de noms.
 
-**Documents :**
-```typescript
-api.documents.upload(file)          // POST /api/documents (multipart/form-data)
-api.documents.getAll()              // GET  /api/documents
-api.documents.delete(id)            // DELETE /api/documents/{id}
+```ts
+// Documents
+api.documents.list()  ·  get(id)  ·  delete(id)
+api.documents.checkDuplicate(fileName, contentHash)
+api.documents.upload(file, strategy, replaceDocumentId?, onProgress?)   // → 202
+
+// Vidéo
+api.video.transcribe(file, options, onProgress?)                        // → 202
+api.video.getTranscription(id)
+
+// Chat
+api.chat.getSystemPrompts()
+api.chat.listSessions()  ·  getSession(id)
+api.chat.deleteSession(id)  ·  deleteAllSessions()
+api.chat.ask(payload)
+api.chat.askStream(payload)                                             // AsyncGenerator<StreamEvent>
 ```
 
-**Vidéo (NOUVEAU Step 3) :**
-```typescript
-api.video.transcribe(file, options) // POST /api/video/transcribe (multipart/form-data)
-// options: { language?, cleanWithLlm?, autoIngest?, title? }
-```
+Deux mécanismes de transport cohabitent :
 
-**Chat :**
-```typescript
-api.chat.ask(request)               // POST /api/chat/ask (blocking)
-api.chat.stream(request, callbacks) // POST /api/chat/stream (Server-Sent Events)
-// callbacks: { onMessage, onError, onComplete }
+- **`request<T>()`** — `fetch` classique pour tout le reste.
+- **`uploadWithProgress<T>()`** — `XMLHttpRequest`, uniquement pour les uploads. `fetch` ne sait pas
+  reporter la progression d'un **envoi** ; c'est la seule raison de cette exception. Ne pas
+  « moderniser » en `fetch` sans perdre la barre de progression.
 
-api.chat.getSystemPrompts()         // GET /api/chat/system-prompts — NOUVEAU Step 3
-```
-
-### Exemple d'utilisation — Transcription vidéo
-
-```typescript
-const response = await api.video.transcribe(file, {
-  language: "fr",
-  cleanWithLlm: false,
-  autoIngest: true,
-  title: "Ma présentation"
-});
-
-console.log(response.documentId);  // UUID du document créé
-console.log(response.duration);    // Durée en secondes
-```
-
-### Exemple d'utilisation — Chat RAG enrichi
-
-```typescript
-const response = await api.chat.ask({
-  question: "Quels sont les points clés?",
-  documentIds: ["uuid-1"],
-  useLlm: true,
-  useRag: true,
-  systemPrompt: "Répondez en 3 bullet points."
-});
-
-// Citations avec timestamps vidéo (si applicable)
-response.citations.forEach(c => {
-  if (c.startTimeSeconds !== undefined) {
-    console.log(`[${formatTime(c.startTimeSeconds)}] ${c.content}`);
-  }
-});
-```
+L'URL de base vient de `import.meta.env.VITE_API_URL`, vide par défaut — ce qui fait passer les
+appels par le proxy Vite en développement.
 
 ---
 
-## types/index.ts — Types partagés
+## `ChatPage` — les points délicats
 
-```typescript
-// ===== Documents =====
-interface Document {
-  id: string;
-  fileName: string;
-  fileType: string;
-  fileSize: number;
-  uploadedAt: string;
-  contentType: string;
-}
+### Les trois modes
 
-// ===== Citations (enrichies Step 3) =====
-interface CitationResponse {
-  content: string;
-  documentName: string;
-  score: number;
-  sectionTitle?: string;           // NOUVEAU
-  chunkIndex?: number;             // NOUVEAU
-  startTimeSeconds?: number;       // NOUVEAU
-  endTimeSeconds?: number;         // NOUVEAU
-}
-
-// ===== Chat (enrichi Step 3) =====
-interface AskQuestionRequest {
-  question: string;
-  documentIds?: string[];
-  strategy?: string;
-  useLlm?: boolean;                // NOUVEAU
-  useRag?: boolean;                // NOUVEAU
-  systemPrompt?: string;           // NOUVEAU
-}
-
-interface AskQuestionResponse {
-  answer: string;
-  citations: CitationResponse[];
-  strategyUsed: string;
-  totalTokens: number;
-  durationMs: number;
-}
-
-interface StreamChunk {
-  type: "delta" | "citations" | "complete";
-  data: string;
-}
-
-// ===== Vidéo (NOUVEAU Step 3) =====
-interface TranscribeVideoResponse {
-  rawTranscription: string;
-  cleanedTranscription?: string;
-  duration: number;
-  segmentCount: number;
-  documentId?: string;
-  processingTimeMs: number;
-}
-
-interface VideoTranscribeOptions {
-  language?: string;
-  cleanWithLlm?: boolean;
-  autoIngest?: boolean;
-  title?: string;
-}
-
-// ===== Prompts système (NOUVEAU Step 3) =====
-interface SystemPromptsResponse {
-  ragSystem: string;
-  directLlmSystem: string;
-}
+```ts
+type Mode = 'classic' | 'llm' | 'rag';
 ```
 
----
+| Mode | Paramètres envoyés | Comportement |
+|------|--------------------|--------------|
+| `classic` | `useLlm: false` | Recherche full-text PostgreSQL, chunks bruts, aucun LLM |
+| `llm` | `useLlm: true, useRag: false` | Le LLM répond seul, sans documents |
+| `rag` | `useLlm: true, useRag: true` | Pipeline RAG complet avec citations |
 
-## Stack technique
+Le prompt système n'est envoyé **que** pour `llm` et `rag` — la recherche full-text n'en a aucun
+usage. Les prompts par défaut sont chargés depuis `GET /api/chat/system-prompts` : le back-end est la
+source de vérité, ne jamais les redéclarer en dur côté front.
 
-| Technologie | Version | Usage |
-|------------|---------|-------|
-| React | 19 | Framework UI |
-| TypeScript | 5.x | Langage typé |
-| Vite | 5.x | Build tool + dev server |
-| React Router | v7 | Routing multi-pages |
-| Fetch API | natif | Appels HTTP vers l'API REST |
+À la relecture d'une conversation, le mode d'affichage est **déduit** de la stratégie enregistrée :
+`FullText` → `classic`, `DirectLlm` → `llm`, tout le reste → `rag`.
 
----
+### Le pilotage par l'URL
 
-## Patterns et conventions
+Un `useEffect` sur `params.sessionId` gouverne l'état de la conversation :
 
-### Composants React
+- `/chat` sans identifiant → conversation vierge ;
+- `/chat/:id` → rechargement via `getSession` ;
+- session invalide (404) → retour silencieux à `/chat`, sans erreur bloquante.
 
-- Composants fonctionnels avec hooks
-- Props typés via TypeScript interfaces
-- Noms de fichiers en PascalCase (ex: `VideoPage.tsx`)
+**Le piège à connaître** : après le premier tour d'une conversation vierge, le composant appelle
+`navigate('/chat/{id}', { replace: true })`. Sans garde, cette navigation redéclencherait l'effet et
+**écraserait les citations riches** (section, horodatages vidéo) affichées à l'instant par la version
+appauvrie relue en base — ces champs ne sont pas persistés côté back. C'est le rôle de `skipLoadRef` :
+il marque la session qui vient d'être créée pour que l'effet ignore ce seul rechargement. Toute
+modification de cet effet doit préserver ce comportement.
 
-### État local
+### Streaming SSE
 
-- `useState` pour l'état local du composant
-- Pas de context/Redux (simple, scope local suffit)
+`api.chat.stream` consomme trois types d'événements :
 
-### Appels API
-
-- Client HTTP typé dans `client.ts`
-- Namespaces pour organiser par ressource
-- Gestion d'erreurs côté composant (try/catch)
-
-### Styles
-
-- CSS CSS natif (fichiers `.css` globaux et locaux)
-- Pas de CSS-in-JS compliqué
-
----
-
-## DocumentsPage.tsx — Gestion des documents
-
-### Fonctionnalités
-
-- Upload de fichier (PDF, vidéo, audio)
-- Validation du type de fichier
-- Liste des documents uploadés avec delete
-- Boutons de navigation vers /video et /chat
-
-### Types acceptés
-
-- **PDF** : `.pdf`
-- **Vidéo** : `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`
-- **Audio** : `.wav`, `.mp3`, `.m4a`, `.ogg`, `.flac`
-
----
-
-## TODOs connus Front Step 3
-
-| Fonctionnalité | Statut | Impact |
-|----------------|--------|--------|
-| Affichage lien/lecteur vidéo pour timestamps dans citations | Non implémenté | UX — données API disponibles, rendu manquant |
-| Streaming SSE en temps réel dans ChatPage | À vérifier | UX — peut être à câbler |
-| Indicateur "chargement..." pendant transcription vidéo | À vérifier | UX — expérience utilisateur |
-| Prévisualisation transcription en direct (mode streaming) | Non implémenté | Nice-to-have |
-
----
-
-## Architecture et données
-
-### Flux de transcription vidéo complet
-
-```
-1. User upload via VideoPage
-   ↓
-2. POST /api/video/transcribe (FormData + options)
-   ↓
-3. Back-end : FFmpeg → Whisper → LLM nettoyage → Ingestion RAG
-   ↓
-4. Réponse : TranscribeVideoResponse { documentId, rawTranscription, ... }
-   ↓
-5. Front-end affiche résultats
-   ↓
-6. User clique "Interroger dans le Chat →"
-   ↓
-7. Navigate vers /chat avec documentId en state
-   ↓
-8. ChatPage reçoit state, pré-sélectionne le document
+```ts
+type StreamEvent =
+  | { event: 'token'; data: { token: string } }
+  | { event: 'done';  data: AskQuestionResponse }
+  | { event: 'error'; data: { message: string } };
 ```
 
-### Flux de chat avec citations vidéo
-
-```
-1. User pose question dans ChatPage (mode RAG)
-   ↓
-2. POST /api/chat/ask avec { question, documentIds, useLlm, useRag, systemPrompt }
-   ↓
-3. Back-end retourne AskQuestionResponse avec citations enrichies
-   ↓
-4. Citations contiennent startTimeSeconds / endTimeSeconds
-   ↓
-5. Front-end affiche timestamps formatés [HH:MM:SS]
-   ↓
-6. (Futur) Clic sur timestamp → ouvre lecteur vidéo à la position
-```
+Les citations et les métadonnées n'arrivent qu'avec `done` — pendant le flux, seul le texte se
+construit.
 
 ---
 
-## Fichiers clés à connaître
+## `types/index.ts` — miroir manuel des DTO C#
 
-| Fichier | Rôle |
-|---------|------|
-| `src/App.tsx` | Composant racine, Router avec 3 routes, topbar navigation |
-| `src/pages/DocumentsPage.tsx` | Upload documents, liste, suppression |
-| `src/pages/VideoPage.tsx` | **NOUVEAU** — Upload vidéo, options, affichage transcription |
-| `src/pages/ChatPage.tsx` | Chat RAG enrichi, 3 modes, prompt editor, citations |
-| `src/api/client.ts` | Client HTTP typé, namespaces documents/video/chat |
-| `src/types/index.ts` | Tous les types TypeScript (Document, Citation, AskQuestion, Transcribe, SystemPrompts) |
-| `src/index.css` | Styles globaux |
-| `src/main.tsx` | Entrée de l'application |
-| `vite.config.ts` | Config Vite (si existe) |
-| `package.json` | Dependencies (React 19, Vite, TypeScript, React Router) |
-| `tsconfig.json` | Config TypeScript |
+Ce fichier est écrit **à la main** et doit refléter `Web.Api/DTOs/`. Il n'y a aucune génération
+automatique : **toute évolution d'un DTO côté back impose une modification manuelle ici**, sans quoi
+l'erreur n'apparaît qu'à l'exécution.
+
+Principaux types : `DocumentResponse`, `DocumentStatus`, `IngestionStage`, `IngestionProgress`,
+`DocumentStatusChangedEvent`, `DocumentProgressChangedEvent`, `CheckDuplicateResponse`,
+`CitationResponse`, `AskQuestionRequest` / `Response`, `ChatSessionSummary`, `ChatSessionDetail`,
+`StreamEvent`, `VideoTranscriptionResponse`.
+
+> Génération de ces types depuis l'OpenAPI du back (`openapi-typescript`) : piste identifiée, non mise
+> en œuvre.
 
 ---
 
-## Intégration avec Back-end
+## Conventions
 
-### Ports
+- **Composants fonctionnels** avec hooks, props typées, fichiers en PascalCase.
+- **État local** via `useState`. Le seul contexte est celui des notifications d'ingestion — il existe
+  parce que l'information doit survivre à un changement de page, pas par principe.
+- **Styles** : CSS natif dans `index.css`, classes préfixées par composant (`chat-sidebar-*`,
+  `ingestion-stepper-*`). Ni CSS-in-JS, ni framework, ni modules CSS.
+- **Erreurs** : `try/catch` dans le composant, message affiché à l'utilisateur en français.
+- **Aucun appel réseau hors de `client.ts`.**
 
-- **Front-end dev** : `http://localhost:5173`
-- **Back-end API** : `http://localhost:50406` (HTTP) ou `https://localhost:50405` (HTTPS)
+---
 
-### CORS
+## Dette technique connue
 
-Le back-end (`Program.cs`) configure CORS pour autoriser :
-- `http://localhost:5173` (dev front-end Vite)
-- `http://localhost:5174` (alternative)
-- `http://localhost:3000` (alt)
+> Résumé côté front. Liste de référence complète : [DETTE-TECHNIQUE.md](../../DETTE-TECHNIQUE.md).
 
-### Configuration API
-
-L'URL de base de l'API est hardcodée ou configurable dans `client.ts`. Exemple :
-
-```typescript
-const API_BASE = "http://localhost:50406";
-
-export const api = {
-  video: {
-    transcribe: async (file, opts) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      if (opts.language) formData.append("language", opts.language);
-      // ...
-      return fetch(`${API_BASE}/api/video/transcribe`, { ... });
-    }
-  }
-};
-```
+| Sujet | État |
+|-------|------|
+| **Tests** | **Zéro test côté front.** Le parseur SSE de `client.ts` est le premier candidat évident (Vitest). |
+| Citations non cliquables | Les horodatages vidéo et numéros de page sont affichés mais n'ouvrent rien — le back ne conserve pas les fichiers originaux |
+| Citations appauvries à la relecture | Une conversation rechargée perd section et horodatages (champs non persistés côté back) |
+| Drag & drop | Reporté — l'upload passe uniquement par le sélecteur de fichiers |
+| Types manuels | Pas de génération depuis l'OpenAPI |
 
 ---
 
 ## Checklist avant de coder
 
-- [ ] Compris les 3 modes RAG (Full-text, LLM, RAG complet)?
-- [ ] Connu les timestamps vidéo dans CitationResponse?
-- [ ] Checké le schema TypeScript des réponses API?
-- [ ] Testé l'API back-end `/api/video/transcribe` avec Scalar ou Postman?
-- [ ] Vérifier que les ports (5173 front, 50406 back) sont accessibles?
+- [ ] Le back tourne-t-il sur le port 5406 (sinon proxy Vite en échec) ?
+- [ ] Le type touché existe-t-il déjà dans `types/index.ts`, et correspond-il au DTO C# actuel ?
+- [ ] L'appel réseau passe-t-il bien par `client.ts` ?
+- [ ] Si l'écran affiche un état d'ingestion : passe-t-il par `IngestionNotificationsContext`
+      plutôt que par un polling ad hoc ?
