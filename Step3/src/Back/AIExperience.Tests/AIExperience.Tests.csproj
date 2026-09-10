@@ -32,6 +32,7 @@
     <ProjectReference Include="..\AIExperience.Rag.Domain\AIExperience.Rag.Domain.csproj" />
     <ProjectReference Include="..\AIExperience.Rag.Application\AIExperience.Rag.Application.csproj" />
     <ProjectReference Include="..\AIExperience.Rag.Infrastructure\AIExperience.Rag.Infrastructure.csproj" />
+    <ProjectReference Include="..\AIExperience.Eval\AIExperience.Eval.csproj" />
   </ItemGroup>
 
 </Project>

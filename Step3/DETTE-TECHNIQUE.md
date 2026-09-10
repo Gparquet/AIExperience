@@ -24,7 +24,7 @@ tests, outillage, dette de code.
 | **E-1** | Health checks + `ValidateOnStart` | Une configuration fausse ne se manifeste aujourd'hui qu'au premier appel concerné. |
 | **E-4** | CI GitHub Actions | Le dossier existe mais est vide, et `dotnet test` est parfois bloqué en local (E-7). |
 | **S-1** | Isolation par utilisateur | Bloquant absolu dès qu'un deuxième compte existe. |
-| **T-4** | Harnais d'évaluation RAG | Sans lui, aucune amélioration de pertinence n'est mesurable — il conditionne tout le plan RAG. |
+| **T-4** | ✅ Harnais d'évaluation RAG — **livré (08/09)** | Sans lui, aucune amélioration de pertinence n'était mesurable — il conditionnait tout le plan RAG. Voir `src/Back/AIExperience.Eval`. |
 
 ---
 
@@ -117,13 +117,19 @@ exactement là que dorment les régressions, et c'est le seul composant qu'aucun
 Aucun test ne traverse controller → dispatcher → handler → persistance.
 → `WebApplicationFactory`.
 
-### T-4. Harnais d'évaluation RAG
+### T-4. Harnais d'évaluation RAG ✅ Livré (08/09)
 **Le manque le plus structurant.** Le projet a accumulé beaucoup de sophistication (fusion hybride,
 reranking, quatre stratégies, préfixes d'embedding) sans jamais installer de mesure objective. Les
 mesures manuelles en SQL du 03/07 (12 questions couvrant les 4 documents du corpus) étaient le bon
 réflexe : il faut les figer en jeu de questions « golden » automatisé, avec recall@k et fidélité.
 Sans ça, chaque évolution de pertinence se juge au ressenti.
 → Recoupe R-13 du [plan RAG](PLAN-AMELIORATION-RAG.md), tenu ici parce que c'est de l'outillage.
+
+**Livré.** Les 12 questions manuelles du 03/07 sont désormais figées dans `eval/golden-dataset.json`
+et exécutées automatiquement par `src/Back/AIExperience.Eval` (`dotnet run --project
+src/Back/AIExperience.Eval -- run`), avec recall@k (citations finales du pipeline) et fidélité
+(LLM-as-judge). Mode `compare` pour un avant/après entre deux runs. Reste hors CI (E-4 non livrée) :
+exécution manuelle, base et LLM réels requis.
 
 ### T-5. Types front non générés depuis l'OpenAPI
 `src/Front/src/types/index.ts` est un miroir **manuel** des DTO C#. Toute évolution d'un DTO côté

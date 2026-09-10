@@ -66,3 +66,7 @@ nunit-*.xml
 # à n'importe quelle profondeur. Le dossier est recréé automatiquement au runtime
 # par WorkFileStore (Directory.CreateDirectory), inutile donc de le versionner.
 App_Data/
+
+# Rapports d'exécution du harnais d'évaluation RAG (R-13/T-4) — artefacts horodatés,
+# non versionnés (dépendent de l'état du LLM/corpus local au moment du run).
+eval/runs/

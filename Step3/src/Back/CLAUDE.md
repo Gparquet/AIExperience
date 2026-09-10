@@ -51,6 +51,9 @@ dotnet run --project src/Back/AIExperience.Web.Api
 # → http://localhost:5406/scalar/v1  documentation interactive Scalar
 
 dotnet run --project src/Back/AIExperience.App.Console   # alternative sans front
+
+dotnet run --project src/Back/AIExperience.Eval -- run       # harnais d'évaluation RAG (recall@k + fidélité)
+dotnet run --project src/Back/AIExperience.Eval -- compare <run-a.json> <run-b.json>   # avant/après
 ```
 
 ---
