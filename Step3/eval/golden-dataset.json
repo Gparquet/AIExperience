@@ -1,0 +1,84 @@
+{
+  "questions": [
+    {
+      "id": "commande-01",
+      "question": "Quelle est la date de visite indiquée sur le billet Disneyland Paris ?",
+      "expectedAnswerKeyPoints": ["mardi 7 avril 2026"],
+      "expectedSources": [{ "fileName": "4013000311051323737919283 (Commande 13816300).pdf" }]
+    },
+    {
+      "id": "commande-02",
+      "question": "Quel est le prix TTC du billet Disneyland Paris commandé ?",
+      "expectedAnswerKeyPoints": ["120,60 €"],
+      "expectedSources": [{ "fileName": "4013000311051323737919283 (Commande 13816300).pdf" }]
+    },
+    {
+      "id": "commande-03",
+      "question": "Quel est le numéro de commande client associé à ce billet Disneyland ?",
+      "expectedAnswerKeyPoints": ["13816300"],
+      "expectedSources": [{ "fileName": "4013000311051323737919283 (Commande 13816300).pdf" }]
+    },
+    {
+      "id": "garde-01",
+      "question": "Quel traitement a été administré à Urielle lors de la consultation d'urgence ?",
+      "expectedAnswerKeyPoints": ["Maropitant 1 mg/kg", "injection sous-cutanée (SC)"],
+      "expectedSources": [{ "fileName": "Garde - Dr WEISSE Sophie.PDF", "pageNumber": 1 }]
+    },
+    {
+      "id": "garde-02",
+      "question": "Quel est le motif de la consultation d'urgence pour la chienne Urielle ?",
+      "expectedAnswerKeyPoints": ["vomissements aigus", "anorexie", "abattement discret"],
+      "expectedSources": [{ "fileName": "Garde - Dr WEISSE Sophie.PDF", "pageNumber": 1 }]
+    },
+    {
+      "id": "garde-03",
+      "question": "Quelle est la conclusion du vétérinaire sur l'origine probable des symptômes d'Urielle ?",
+      "expectedAnswerKeyPoints": ["intolérance alimentaire probable", "sans exclure gastro-entérite ou corps étranger digestif"],
+      "expectedSources": [{ "fileName": "Garde - Dr WEISSE Sophie.PDF", "pageNumber": 1 }]
+    },
+    {
+      "id": "cv-01",
+      "question": "Depuis quand Geoffrey occupe-t-il son poste de Technique Leader chez Eurotunnel ?",
+      "expectedAnswerKeyPoints": ["janvier 2021"],
+      "expectedSources": [{ "fileName": "CV-Geoffrey - TECHNICAL LEADER  - EKEEP IT.docx", "pageNumber": 1 }]
+    },
+    {
+      "id": "cv-02",
+      "question": "Quelles bonnes pratiques de développement Geoffrey a-t-il mises en place chez Eurotunnel ?",
+      "expectedAnswerKeyPoints": ["Pull Request", "Code Review", "TDD"],
+      "expectedSources": [{ "fileName": "CV-Geoffrey - TECHNICAL LEADER  - EKEEP IT.docx", "pageNumber": 1 }]
+    },
+    {
+      "id": "cv-03",
+      "question": "Chez quel client Geoffrey a-t-il travaillé en tant que développeur .NET pour Sopra Steria ?",
+      "expectedAnswerKeyPoints": ["Banque de France"],
+      "expectedSources": [{ "fileName": "CV-Geoffrey - TECHNICAL LEADER  - EKEEP IT.docx", "pageNumber": 1 }]
+    },
+    {
+      "id": "tva-01",
+      "question": "Qu'est-ce que la sectorisation de la TVA, telle que décrite dans la vidéo ?",
+      "expectedAnswerKeyPoints": [
+        "mécanisme permettant à un établissement public ayant une activité commerciale de régulariser une partie de son traitement de TVA en fonction de sa part client",
+        "évite les distorsions de concurrence"
+      ],
+      "expectedSources": [{ "fileName": "La compta n'aura plus de secret pour vous - Saison 1 Episode 18 - La TVA partie 1.mkv", "startTimeSeconds": 402, "endTimeSeconds": 734 }]
+    },
+    {
+      "id": "tva-02",
+      "question": "Quelle est la différence entre le taux de sectorisation provisoire et le taux définitif ?",
+      "expectedAnswerKeyPoints": [
+        "le taux provisoire est appliqué en cours d'exercice",
+        "le taux définitif est calculé en fin d'exercice sur l'écart réel constaté"
+      ],
+      "expectedSources": [{ "fileName": "La compta n'aura plus de secret pour vous - Saison 1 Episode 18 - La TVA partie 1.mkv", "startTimeSeconds": 632, "endTimeSeconds": 824 }]
+    },
+    {
+      "id": "tva-03",
+      "question": "Pourquoi la plupart des établissements publics ne sont-ils pas soumis à la TVA ?",
+      "expectedAnswerKeyPoints": [
+        "cela n'aurait pas de sens qu'un établissement public reverse à l'État, sous forme de TVA, des fonds qu'il a reçus de l'État pour son fonctionnement"
+      ],
+      "expectedSources": [{ "fileName": "La compta n'aura plus de secret pour vous - Saison 1 Episode 18 - La TVA partie 1.mkv", "startTimeSeconds": 309, "endTimeSeconds": 411 }]
+    }
+  ]
+}

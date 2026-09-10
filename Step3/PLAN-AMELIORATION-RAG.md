@@ -175,7 +175,7 @@ LLM coûteuses sont activées par défaut sans batching.
 | # | Constat | Impact |
 |---|---------|--------|
 | R-12 | Aucune **mesure par étape** (timing rerank/compression/LLM) → impossible de diagnostiquer la lenteur | 🟡 |
-| R-13 | Aucun **harnais d'évaluation** (recall@k, fidélité des réponses, jeu de questions « golden ») → on améliore à l'aveugle | 🟠 |
+| R-13 | ✅ **Livré** — harnais d'évaluation (recall@k au niveau citations + fidélité LLM-as-judge), jeu de 12 questions « golden » couvrant les 4 documents du corpus de dev. Voir `src/Back/AIExperience.Eval` et `eval/golden-dataset.json`. | 🟠 |
 | R-14 | `TotalTokens = 0` en mode streaming ; pas de suivi de consommation | 🟡 |
 
 ### 3.5. Consultation des sources *(nouveau — révision 13/07)*
@@ -430,8 +430,9 @@ En // :     socle hors RAG → DETTE-TECHNIQUE.md
 **Trois actions à plus fort ratio impact/effort identifiées le 09/08** :
 1. ✅ **R-20** (condensation de question multi-tour) — **livré le 10/08**. Réparait une régression
    déjà en production fonctionnelle depuis la livraison de R-2, invisible sans inspection des citations.
-2. **R-13 / T-4** (harnais d'évaluation) — sans mesure objective, aucun des points restants ne peut
-   être arbitré autrement qu'au ressenti. Prérequis de fait à tout le reste de ce plan.
+2. ✅ **R-13 / T-4** (harnais d'évaluation) — **livré le 08/09**. Sans mesure objective, aucun des
+   points restants ne pouvait être arbitré autrement qu'au ressenti ; prérequis de fait à tout le
+   reste de ce plan.
 3. **Lot 5** (consultation des sources) — le seul point de cette liste dont l'utilisateur perçoive
    directement le bénéfice.
 
@@ -1187,13 +1188,20 @@ foreach (var chunk in rankedChunks) {
 
 **Correctif.** Logs structurés / `Activity` (OpenTelemetry) par étape : `retrieval_ms`, `rerank_ms`, `compress_ms`, `llm_ms`, nb chunks, nb appels LLM. Exposer en mode debug dans `RagResponse`.
 
-#### R-13 — Pas de harnais d'évaluation
+#### R-13 — Pas de harnais d'évaluation ✅ Livré (08/09)
 
 **Mécanisme.** Aucun moyen de mesurer la qualité (recall@k de la récupération, fidélité/exactitude des réponses). Améliorations « au ressenti ».
 
 **Pourquoi c'est grave.** On ne peut pas prouver qu'un changement (hybride, nouveau chunker) améliore, ni détecter une régression.
 
 **Correctif.** Constituer un petit **jeu « golden »** (questions → passages/réponses attendus) et un projet de test calculant recall@k et un score de fidélité (LLM-as-judge ou correspondance), branché sur les Lots 1/3.
+
+**Livré.** Nouveau projet console `src/Back/AIExperience.Eval` (commandes `run`/`compare`), jeu de
+12 questions golden couvrant les 4 documents du corpus de dev (`eval/golden-dataset.json`).
+Recall mesuré au niveau des citations finales du pipeline (post fusion hybride + reranking, pas
+sur la récupération vectorielle brute) ; fidélité par LLM-as-judge (même `IChatClient` que le
+pipeline, barème à 3 paliers 0/0.5/1). Rapport JSON horodaté avec instantané de `RagOptions`, pour
+comparer un avant/après. Détails : `docs/superpowers/specs/2026-09-08-r13-t4-harnais-evaluation-design.md`.
 
 #### R-14 — `TotalTokens = 0` en streaming
 
